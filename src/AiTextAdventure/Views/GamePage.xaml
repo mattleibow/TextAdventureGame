@@ -196,7 +196,7 @@
                                                    Text="{Binding AgentName}"
                                                    FontSize="10"
                                                    FontAttributes="Bold"
-                                                   TextColor="{Binding Color}" />
+                                                   TextColor="{Binding AgentColor}" />
                                             <Label Grid.Column="1"
                                                    Text="{Binding TimeStamp}"
                                                    FontSize="9"

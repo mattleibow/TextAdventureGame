@@ -7,7 +7,7 @@ namespace AiTextAdventure.ViewModels;
 
 public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 {
-    public string TimeStamp => evt.Timestamp.ToString("HH:mm:ss.fff");
+    public string TimeStamp => evt.Timestamp.ToString("HH:mm:ss");
     public string AgentName => evt.AgentName;
     public string Title => evt.Title;
     public string? Detail => evt.Detail;
@@ -30,20 +30,22 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
         _ => "•"
     };
 
-    public Color Color => evt.Kind switch
+    // Named AgentColor to avoid collision with the Color type in compiled XAML bindings
+    public Color AgentColor => evt.Kind switch
     {
         AgentEventKind.Error => Colors.Red,
-        AgentEventKind.WorkflowComplete => Colors.Green,
+        AgentEventKind.WorkflowComplete => Colors.LightGreen,
         AgentEventKind.Handoff => Colors.Orange,
-        AgentEventKind.ToolCall or AgentEventKind.ToolResult => Colors.Purple,
+        AgentEventKind.ToolCall or AgentEventKind.ToolResult => Colors.Violet,
         AgentEventKind.Streaming => Colors.CornflowerBlue,
-        _ => Colors.Gray
+        AgentEventKind.AgentInvoked => Colors.Gold,
+        _ => Color.FromArgb("#7A7A9A")
     };
 }
 
-public partial class EventsPanelViewModel : ObservableObject, IDisposable
+public partial class EventsPanelViewModel : ObservableObject
 {
-    private readonly IDisposable _subscription;
+    private readonly EventStream _eventStream;
 
     [ObservableProperty]
     private bool isVisible = true;
@@ -52,18 +54,24 @@ public partial class EventsPanelViewModel : ObservableObject, IDisposable
 
     public EventsPanelViewModel(EventStream eventStream)
     {
-        _subscription = eventStream.Events.Subscribe(evt =>
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-                Events.Add(new AgentEventViewModel(evt)));
-        });
+        _eventStream = eventStream;
+        _eventStream.EventEmitted += OnEventEmitted;
+    }
+
+    private void OnEventEmitted(AgentEvent evt)
+    {
+        // EventEmitted fires on the emitting thread (may be background).
+        // Marshal the collection update to the main thread.
+        MainThread.BeginInvokeOnMainThread(() =>
+            Events.Add(new AgentEventViewModel(evt)));
     }
 
     [RelayCommand]
     private void ToggleVisibility() => IsVisible = !IsVisible;
 
     [RelayCommand]
-    private void ClearEvents() => Events.Clear();
+    private void ClearEvents() =>
+        MainThread.BeginInvokeOnMainThread(() => Events.Clear());
 
-    public void Dispose() => _subscription.Dispose();
+    public void Unsubscribe() => _eventStream.EventEmitted -= OnEventEmitted;
 }

@@ -1,15 +1,13 @@
-using System.Reactive.Subjects;
-using AiTextAdventure.Services.Observability;
-
 namespace AiTextAdventure.Services.Observability;
 
-public class EventStream : IDisposable
+/// <summary>
+/// Simple event bus for agent lifecycle events.
+/// Uses a plain C# event so subscribers receive events synchronously on the emitting thread.
+/// EventsPanelViewModel dispatches to the main thread inside its handler.
+/// </summary>
+public class EventStream
 {
-    private readonly Subject<AgentEvent> _subject = new();
+    public event Action<AgentEvent>? EventEmitted;
 
-    public IObservable<AgentEvent> Events => _subject;
-
-    public void Emit(AgentEvent evt) => _subject.OnNext(evt);
-
-    public void Dispose() => _subject.Dispose();
+    public void Emit(AgentEvent evt) => EventEmitted?.Invoke(evt);
 }

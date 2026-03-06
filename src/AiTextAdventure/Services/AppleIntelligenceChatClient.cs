@@ -5,27 +5,18 @@ namespace AiTextAdventure.Services;
 
 /// <summary>
 /// Factory that creates the appropriate IChatClient for the current platform.
-/// On Apple platforms (iOS 26+ / macOS 26+) this returns the real
-/// <c>Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient</c> which calls
-/// the on-device Apple Intelligence SLM via the Foundation framework.
-/// On other platforms (Android, Windows) or when Apple Intelligence is unavailable,
-/// it falls back to <see cref="FallbackChatClient"/> which generates deterministic
-/// placeholder responses so the game remains playable during development.
+/// On Apple platforms (iOS 26+ / macOS 26+) returns the real AppleIntelligenceChatClient.
+/// On other platforms returns FallbackChatClient for local development.
 /// </summary>
 public static class AppleIntelligenceChatClientFactory
 {
     public static IChatClient Create(ILoggerFactory loggerFactory)
     {
 #if IOS || MACCATALYST
-        try
-        {
-            return new Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient();
-        }
-        catch
-        {
-            // Apple Intelligence not available on this device/OS version; use fallback
-            return new FallbackChatClient(loggerFactory.CreateLogger<FallbackChatClient>());
-        }
+        // Use the real on-device Apple Intelligence SLM directly.
+        // If it's unavailable at this moment, let it throw — the caller will catch and
+        // show a user-visible error message in the chat narrative.
+        return new Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient();
 #else
         return new FallbackChatClient(loggerFactory.CreateLogger<FallbackChatClient>());
 #endif

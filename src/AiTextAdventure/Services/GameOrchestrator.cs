@@ -128,13 +128,13 @@ public class GameOrchestrator(
                 if (string.IsNullOrWhiteSpace(narrativeText))
                 {
                     logger.LogWarning("Narrator returned empty response");
-                    narrativeText = FallbackNarrative(playerInput);
+                    narrativeText = "⚠️ The magical forces falter... The world seems to resist description. Try a different action.";
                 }
             }
             catch (Exception narrativeEx)
             {
-                logger.LogError(narrativeEx, "Narrator call failed, using fallback narrative");
-                narrativeText = FallbackNarrative(playerInput);
+                logger.LogError(narrativeEx, "Narrator call failed");
+                narrativeText = $"⚠️ The arcane forces falter... ({narrativeEx.Message})\n\nThe world resists your action. Try something different.";
             }
 
             logger.LogInformation("Narrative: {Length} chars", narrativeText.Length);
@@ -178,8 +178,9 @@ public class GameOrchestrator(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing turn for save {SaveSlotId}", saveSlotId);
-            eventStream.Emit(new AgentEvent($"Error: {ex.Message}", "GameMaster", AgentEventKind.Error, ex.ToString()[..Math.Min(300, ex.ToString().Length)]));
-            return new GameTurnResult($"[Something went wrong: {ex.Message}]", DefaultSuggestions());
+            eventStream.Emit(new AgentEvent($"Turn failed: {ex.Message}", "GameMaster", AgentEventKind.Error));
+            var errorNarrative = $"⚠️ The magical forces are disrupted... ({ex.Message})\n\nPlease try a different action.";
+            return new GameTurnResult(errorNarrative, DefaultSuggestions());
         }
     }
 
@@ -288,19 +289,6 @@ public class GameOrchestrator(
         new SuggestedAction("Look around", "look around for anything interesting"),
         new SuggestedAction("Wait", "wait and observe quietly"),
     ];
-
-    private static string FallbackNarrative(string playerInput)
-    {
-        // Deterministic fallback when the LLM is unavailable or filtered
-        var index = Math.Abs(playerInput.GetHashCode()) % 4;
-        return index switch
-        {
-            0 => "You venture forward carefully, senses alert. The air here is thick with possibility — every shadow conceals a secret, every sound a story waiting to unfold.\n\nBefore you, the landscape stretches with quiet mystery. Ancient stones mark the passage of those who came before. You are not the first to walk this path, and you may not be the last.",
-            1 => "Your senses sharpen as you survey the scene. The silence here is deep — not the silence of emptiness, but the silence of things waiting. Whatever inhabits this place has learned patience.\n\nSmall details catch your eye: marks on a stone, a feather caught on a branch, the faint impression of footprints in soft earth.",
-            2 => "The world shifts as you act, responding to your presence. A faint breeze carries the scent of pine and distant rain. Something moves in the undergrowth — perhaps a creature, perhaps just the wind playing tricks.\n\nYou stand at the edge of what is known, looking into what is not. The path forward is yours to choose.",
-            _ => "Time seems to slow as you take in your surroundings. The colours here are muted, as if the world itself holds its breath.\n\nIn the distance, something glints — metal? Water? You cannot be certain. Each direction carries its own whisper of promise.",
-        };
-    }
 
     private async Task PersistJournalEntry(Guid saveSlotId, string narrativeText, CancellationToken cancellationToken)
     {
