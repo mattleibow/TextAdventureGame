@@ -22,6 +22,11 @@ public partial class GamePage : ContentPage
         InitializeComponent();
         _gameViewModel = gameViewModel;
         _eventsViewModel = eventsViewModel;
+
+        // Left panel: game narrative, input, suggested actions
         BindingContext = gameViewModel;
+
+        // Right panel: agent events (separate BindingContext on the named Grid)
+        EventsPanel.BindingContext = eventsViewModel;
     }
 }

@@ -86,6 +86,7 @@
         <!-- RIGHT: Agent Events Panel                       -->
         <!-- ═══════════════════════════════════════════════ -->
         <Grid Grid.Column="1"
+              x:Name="EventsPanel"
               RowDefinitions="Auto,*"
               BackgroundColor="#0D0D1A"
               Padding="8">
@@ -95,17 +96,16 @@
                 <Label Grid.Column="0" Text="Agent Events" FontAttributes="Bold"
                        TextColor="Silver" FontSize="13" VerticalOptions="Center" />
                 <Button Grid.Column="1" Text="Clear"
-                        Command="{Binding Source={x:Reference EventsPanel}, Path=BindingContext.ClearEventsCommand}"
+                        Command="{Binding ClearEventsCommand}"
                         FontSize="11" Padding="8,4" BackgroundColor="Transparent" TextColor="Gray" />
                 <Button Grid.Column="2" Text="◀"
-                        Command="{Binding Source={x:Reference EventsPanel}, Path=BindingContext.ToggleVisibilityCommand}"
+                        Command="{Binding ToggleVisibilityCommand}"
                         FontSize="11" Padding="8,4" BackgroundColor="Transparent" TextColor="Gray" />
             </Grid>
 
             <!-- Events List -->
             <CollectionView Grid.Row="1"
-                            x:Name="EventsPanel"
-                            ItemsSource="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext}"
+                            ItemsSource="{Binding Events}"
                             SelectionMode="None">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:AgentEventViewModel">
