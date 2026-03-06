@@ -25,7 +25,7 @@ public class GameOrchestrator(
     ILogger<GameOrchestrator> logger)
 {
     private const string NarratorSystemPrompt = """
-        You are the Narrator of a text adventure game. You write vivid, atmospheric, second-person
+        You are the Narrator of an adventure game. You write vivid, atmospheric, second-person
         prose that immerses the player in the world.
 
         Style guidelines:
@@ -34,21 +34,22 @@ public class GameOrchestrator(
         - Vivid sensory details: what the player sees, hears, smells, feels
         - 2-4 short paragraphs maximum
         - Atmospheric and evocative, not mechanical
-        - Match the tone of the world context (dark forest = mysterious and tense, etc.)
+        - Match the tone of the world context
 
         You will be given the current world state and the player's action.
         Write ONLY the narrative prose. Do not include suggestions or metadata.
         """;
 
     private const string SuggestionSystemPrompt = """
-        You are the Suggestion agent for a text adventure game. Based on the current situation,
+        You are the Action Advisor for an adventure game. Based on the current situation,
         generate exactly 3-4 short, varied action suggestions for the player.
 
         Rules:
         - Each suggestion must be a short imperative phrase (3-8 words)
-        - Mix different types: explore, interact, talk, observe
+        - Mix different types: explore, discover, speak with someone, observe surroundings
         - At least one should be unexpected or creative
         - Must be relevant to the current situation
+        - Keep all suggestions appropriate for a general audience
 
         Respond with ONLY valid JSON in this exact format:
         {"Actions":[{"Label":"Short Label","ActionText":"do the specific thing"},{"Label":"Another","ActionText":"do something else"}]}
@@ -57,7 +58,7 @@ public class GameOrchestrator(
         """;
 
     private const string WorldGenSystemPrompt = """
-        You are the WorldGen agent for a text adventure game. Given a game name/theme, generate
+        You are the World Builder for an adventure game. Given a game name or theme, generate
         the starting world state as JSON.
 
         Respond with ONLY valid JSON in this exact format:
@@ -67,7 +68,7 @@ public class GameOrchestrator(
           "TimeOfDay": "dawn|morning|midday|afternoon|dusk|evening|night|midnight",
           "RegionDescription": "2-3 sentence description of this place and its atmosphere",
           "KnownEntities": ["entity1", "entity2", "entity3"],
-          "RecentEvents": ["one sentence describing how the player arrived or awakened here"]
+          "RecentEvents": ["one sentence describing how the player arrived here"]
         }
 
         Make the world match the game name's theme. Be creative and evocative.
@@ -118,35 +119,54 @@ public class GameOrchestrator(
                 new(ChatRole.User, $"{worldContext}\n\nPlayer action: {playerInput}")
             };
 
-            var narrativeResponse = await chatClient.GetResponseAsync(narrativeMessages, cancellationToken: cancellationToken);
-            var narrativeText = narrativeResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-
-            if (string.IsNullOrWhiteSpace(narrativeText))
+            string narrativeText;
+            try
             {
-                logger.LogWarning("Narrator returned empty response");
-                narrativeText = "The world shifts around you as your action takes effect...";
+                var narrativeResponse = await chatClient.GetResponseAsync(narrativeMessages, cancellationToken: cancellationToken);
+                narrativeText = narrativeResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+
+                if (string.IsNullOrWhiteSpace(narrativeText))
+                {
+                    logger.LogWarning("Narrator returned empty response");
+                    narrativeText = FallbackNarrative(playerInput);
+                }
+            }
+            catch (Exception narrativeEx)
+            {
+                logger.LogError(narrativeEx, "Narrator call failed, using fallback narrative");
+                narrativeText = FallbackNarrative(playerInput);
             }
 
             logger.LogInformation("Narrative: {Length} chars", narrativeText.Length);
             var preview = narrativeText.Length > 200 ? narrativeText[..200] + "..." : narrativeText;
             eventStream.Emit(new AgentEvent("Narrative ready", "Narrator", AgentEventKind.AgentOutput, preview));
 
-            // Step 2: Generate action suggestions
+            // Step 2: Generate action suggestions (isolated — failure here does NOT lose the narrative)
             logger.LogDebug("Calling Suggestion agent...");
             eventStream.Emit(new AgentEvent("Generating suggestions...", "Suggestion", AgentEventKind.AgentInvoked));
 
-            var suggestionMessages = new List<ChatMessage>
+            List<SuggestedAction> suggestions;
+            try
             {
-                new(ChatRole.System, SuggestionSystemPrompt),
-                new(ChatRole.User, $"{worldContext}\n\nPlayer just did: {playerInput}\n\nNarrative: {narrativeText}\n\nGenerate contextual action suggestions.")
-            };
+                var suggestionMessages = new List<ChatMessage>
+                {
+                    new(ChatRole.System, SuggestionSystemPrompt),
+                    new(ChatRole.User, $"Location: {worldState?.CurrentLocation ?? "unknown"}\nSituation: {playerInput}\n\nGenerate 3-4 contextual action suggestions.")
+                };
 
-            var suggestionResponse = await chatClient.GetResponseAsync(suggestionMessages, cancellationToken: cancellationToken);
-            var suggestionText = suggestionResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-
-            var suggestions = ParseSuggestions(suggestionText);
-            logger.LogInformation("Suggestions: {Count}", suggestions.Count);
-            eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput, suggestionText[..Math.Min(100, suggestionText.Length)]));
+                var suggestionResponse = await chatClient.GetResponseAsync(suggestionMessages, cancellationToken: cancellationToken);
+                var suggestionText = suggestionResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+                suggestions = ParseSuggestions(suggestionText);
+                logger.LogInformation("Suggestions: {Count}", suggestions.Count);
+                var suggPreview = suggestionText[..Math.Min(100, suggestionText.Length)];
+                eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput, suggPreview));
+            }
+            catch (Exception suggEx)
+            {
+                logger.LogWarning(suggEx, "Suggestion call failed (content filter or error), using defaults");
+                eventStream.Emit(new AgentEvent("Using default suggestions", "Suggestion", AgentEventKind.AgentCompleted));
+                suggestions = DefaultSuggestions();
+            }
 
             // Step 3: Persist journal entry
             await PersistJournalEntry(saveSlotId, narrativeText, cancellationToken);
@@ -159,7 +179,7 @@ public class GameOrchestrator(
         {
             logger.LogError(ex, "Error processing turn for save {SaveSlotId}", saveSlotId);
             eventStream.Emit(new AgentEvent($"Error: {ex.Message}", "GameMaster", AgentEventKind.Error, ex.ToString()[..Math.Min(300, ex.ToString().Length)]));
-            return new GameTurnResult($"[Something went wrong: {ex.Message}]", []);
+            return new GameTurnResult($"[Something went wrong: {ex.Message}]", DefaultSuggestions());
         }
     }
 
@@ -180,10 +200,12 @@ public class GameOrchestrator(
             var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
 
             // Strip markdown code fences if present
-            if (json.StartsWith("```"))
+            if (json.Contains("```"))
             {
-                var lines = json.Split('\n');
-                json = string.Join('\n', lines.Skip(1).TakeWhile(l => !l.TrimStart().StartsWith("```")));
+                var start = json.IndexOf('{');
+                var end = json.LastIndexOf('}');
+                if (start >= 0 && end > start)
+                    json = json[start..(end + 1)];
             }
 
             var generated = JsonSerializer.Deserialize(json, GameJsonContext.Default.WorldState);
@@ -266,6 +288,19 @@ public class GameOrchestrator(
         new SuggestedAction("Look around", "look around for anything interesting"),
         new SuggestedAction("Wait", "wait and observe quietly"),
     ];
+
+    private static string FallbackNarrative(string playerInput)
+    {
+        // Deterministic fallback when the LLM is unavailable or filtered
+        var index = Math.Abs(playerInput.GetHashCode()) % 4;
+        return index switch
+        {
+            0 => "You venture forward carefully, senses alert. The air here is thick with possibility — every shadow conceals a secret, every sound a story waiting to unfold.\n\nBefore you, the landscape stretches with quiet mystery. Ancient stones mark the passage of those who came before. You are not the first to walk this path, and you may not be the last.",
+            1 => "Your senses sharpen as you survey the scene. The silence here is deep — not the silence of emptiness, but the silence of things waiting. Whatever inhabits this place has learned patience.\n\nSmall details catch your eye: marks on a stone, a feather caught on a branch, the faint impression of footprints in soft earth.",
+            2 => "The world shifts as you act, responding to your presence. A faint breeze carries the scent of pine and distant rain. Something moves in the undergrowth — perhaps a creature, perhaps just the wind playing tricks.\n\nYou stand at the edge of what is known, looking into what is not. The path forward is yours to choose.",
+            _ => "Time seems to slow as you take in your surroundings. The colours here are muted, as if the world itself holds its breath.\n\nIn the distance, something glints — metal? Water? You cannot be certain. Each direction carries its own whisper of promise.",
+        };
+    }
 
     private async Task PersistJournalEntry(Guid saveSlotId, string narrativeText, CancellationToken cancellationToken)
     {
