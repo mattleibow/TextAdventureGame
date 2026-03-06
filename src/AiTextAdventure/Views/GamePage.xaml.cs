@@ -6,7 +6,7 @@ namespace AiTextAdventure.Views;
 public partial class GamePage : ContentPage
 {
     private readonly GameViewModel _gameViewModel;
-    private readonly EventsPanelViewModel _eventsViewModel;
+    private readonly SidebarViewModel _sidebarViewModel;
 
     public string SaveSlotIdStr
     {
@@ -17,29 +17,33 @@ public partial class GamePage : ContentPage
         }
     }
 
-    public GamePage(GameViewModel gameViewModel, EventsPanelViewModel eventsViewModel)
+    public GamePage(GameViewModel gameViewModel, SidebarViewModel sidebarViewModel)
     {
         InitializeComponent();
         _gameViewModel = gameViewModel;
-        _eventsViewModel = eventsViewModel;
+        _sidebarViewModel = sidebarViewModel;
 
-        // Left panel: game narrative, input, suggested actions
+        // Wire sidebar to game so it refreshes after each turn
+        _gameViewModel.SetSidebar(sidebarViewModel);
+
+        // Left panel: game narrative + input
         BindingContext = gameViewModel;
 
-        // Right panel: agent events (separate BindingContext on the named Grid)
-        EventsPanel.BindingContext = eventsViewModel;
+        // Right panel: tabbed sidebar
+        SidebarPanel.BindingContext = sidebarViewModel;
+        // The EventsPanel inside the sidebar also needs its own BindingContext
+        // but it's accessed via SidebarViewModel.EventsPanel, so the binding path works.
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        // Kick off the opening narrative once the SaveSlotId query property has been set
         await _gameViewModel.InitializeAsync();
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        _eventsViewModel.Unsubscribe();
+        _sidebarViewModel.EventsPanel.Unsubscribe();
     }
 }

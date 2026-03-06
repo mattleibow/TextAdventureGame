@@ -74,6 +74,7 @@ public static class MauiProgram
         services.AddTransient<MainMenuViewModel>();
         services.AddTransient<GameViewModel>();
         services.AddTransient<EventsPanelViewModel>();
+        services.AddTransient<SidebarViewModel>();
         services.AddTransient<InventoryViewModel>();
         services.AddTransient<JournalViewModel>();
 

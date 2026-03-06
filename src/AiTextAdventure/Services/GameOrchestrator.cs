@@ -11,10 +11,8 @@ namespace AiTextAdventure.Services;
 public record GameTurnResult(string Narrative, List<SuggestedAction> Suggestions);
 
 /// <summary>
-/// Orchestrates a single player turn by making direct IChatClient calls with
-/// carefully crafted system prompts. This approach is simpler and more reliable
-/// than the multi-agent handoff workflow, which requires the LLM to understand
-/// handoff protocol signals that the fallback client doesn't support.
+/// Orchestrates a single player turn by making direct IChatClient calls.
+/// Keeps prompts short to stay within Apple Intelligence's small context window (~2k tokens).
 /// </summary>
 public class GameOrchestrator(
     IChatClient chatClient,
@@ -24,77 +22,47 @@ public class GameOrchestrator(
     EventStream eventStream,
     ILogger<GameOrchestrator> logger)
 {
+    // Narrator: concise second-person prose, grounded in world state, max 2-3 sentences
     private const string NarratorSystemPrompt = """
-        You are the Narrator of an adventure game. You write vivid, atmospheric, second-person
-        prose that immerses the player in the world.
-
-        Style guidelines:
-        - Always use second person ("You see...", "You hear...", "Before you stands...")
-        - Present tense
-        - Vivid sensory details: what the player sees, hears, smells, feels
-        - 2-4 short paragraphs maximum
-        - Atmospheric and evocative, not mechanical
-        - Match the tone of the world context
-
-        You will be given the current world state and the player's action.
-        Write ONLY the narrative prose. Do not include suggestions or metadata.
+        You are the Narrator of an adventure game. Write vivid, second-person, present-tense prose.
+        Rules:
+        - 2-3 sentences MAXIMUM. Be concise and atmospheric.
+        - Use ONLY entities, locations, and features listed in the world context.
+        - If the player tries to go somewhere not in the world context, say it cannot be found and describe what IS nearby.
+        - No lists, no headings, just prose.
         """;
 
+    // Suggestion: minimal prompt for exactly 3 grounded actions as JSON
     private const string SuggestionSystemPrompt = """
-        You are the Action Advisor for an adventure game. Based on the current situation,
-        generate exactly 3-4 short, varied action suggestions for the player.
-
-        Rules:
-        - Each suggestion must be a short imperative phrase (3-8 words)
-        - Mix different types: explore, discover, speak with someone, observe surroundings
-        - At least one should be unexpected or creative
-        - Must be relevant to the current situation
-        - Keep all suggestions appropriate for a general audience
-
-        Respond with ONLY valid JSON in this exact format:
-        {"Actions":[{"Label":"Short Label","ActionText":"do the specific thing"},{"Label":"Another","ActionText":"do something else"}]}
-
-        No markdown, no explanation, ONLY the JSON object.
+        Output ONLY this JSON (no markdown, no explanation):
+        {"Actions":[{"Label":"Label","ActionText":"action text"},{"Label":"Label2","ActionText":"action text 2"},{"Label":"Label3","ActionText":"action text 3"}]}
+        Generate exactly 3 short action suggestions (3-6 words each) relevant to the current location.
+        Use only things that exist in the world context.
         """;
 
     private const string WorldGenSystemPrompt = """
-        You are the World Builder for an adventure game. Given a game name or theme, generate
-        the starting world state as JSON.
-
-        Respond with ONLY valid JSON in this exact format:
-        {
-          "CurrentBiome": "forest|cave|city|desert|ocean|mountain|dungeon|ruins",
-          "CurrentLocation": "evocative location name (2-4 words)",
-          "TimeOfDay": "dawn|morning|midday|afternoon|dusk|evening|night|midnight",
-          "RegionDescription": "2-3 sentence description of this place and its atmosphere",
-          "KnownEntities": ["entity1", "entity2", "entity3"],
-          "RecentEvents": ["one sentence describing how the player arrived here"]
-        }
-
-        Make the world match the game name's theme. Be creative and evocative.
-        No markdown, no explanation, ONLY the JSON object.
+        Output ONLY valid JSON (no markdown, no explanation):
+        {"CurrentBiome":"forest","CurrentLocation":"Name","TimeOfDay":"dawn","RegionDescription":"2 sentences.","KnownEntities":["item1","item2","item3"],"RecentEvents":["One sentence."]}
+        Generate a starting world for the game name given. Make it match the theme.
         """;
 
     public async Task<GameTurnResult> InitializeGameAsync(
         Guid saveSlotId,
         CancellationToken cancellationToken = default)
     {
-        // Look up the game name from the save slot
         var slot = await saveSlotService.GetSaveSlot(saveSlotId, cancellationToken);
         var gameName = slot?.Name ?? "Adventure";
         logger.LogInformation("Initializing game for save {SaveSlotId} (name: {GameName})", saveSlotId, gameName);
 
-        // Get or create WorldState — use AI to generate from game name if new
         var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
         if (worldState is null)
         {
-            worldState = await GenerateWorldStateAsync(saveSlotId, gameName ?? "Adventure", cancellationToken);
+            worldState = await GenerateWorldStateAsync(saveSlotId, gameName, cancellationToken);
             await worldStateService.SaveState(worldState, cancellationToken);
             logger.LogInformation("Generated world: {Biome} / {Location}", worldState.CurrentBiome, worldState.CurrentLocation);
         }
 
-        // Generate opening narrative
-        return await ProcessTurnAsync(saveSlotId, "You arrive. Look around and describe the opening scene vividly.", cancellationToken);
+        return await ProcessTurnAsync(saveSlotId, "Describe the opening scene.", cancellationToken);
     }
 
     public async Task<GameTurnResult> ProcessTurnAsync(
@@ -102,73 +70,76 @@ public class GameOrchestrator(
         string playerInput,
         CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Processing turn for save {SaveSlotId}: {Input}", saveSlotId, playerInput[..Math.Min(80, playerInput.Length)]);
+        logger.LogInformation("Turn: {Input}", playerInput[..Math.Min(60, playerInput.Length)]);
 
         var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
-        var worldContext = BuildWorldContext(worldState);
+        var worldContext = BuildCompactContext(worldState);
 
         try
         {
-            // Step 1: Generate narrative via Narrator
-            logger.LogDebug("Calling Narrator agent...");
-            eventStream.Emit(new AgentEvent("Generating narrative...", "Narrator", AgentEventKind.AgentInvoked));
-
-            var narrativeMessages = new List<ChatMessage>
-            {
-                new(ChatRole.System, NarratorSystemPrompt),
-                new(ChatRole.User, $"{worldContext}\n\nPlayer action: {playerInput}")
-            };
+            // Step 1: Narrator — concise, grounded narrative
+            eventStream.Emit(new AgentEvent("Narrating...", "Narrator", AgentEventKind.AgentInvoked));
 
             string narrativeText;
             try
             {
-                var narrativeResponse = await chatClient.GetResponseAsync(narrativeMessages, cancellationToken: cancellationToken);
-                narrativeText = narrativeResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-
-                if (string.IsNullOrWhiteSpace(narrativeText))
+                var narrativeMessages = new List<ChatMessage>
                 {
-                    logger.LogWarning("Narrator returned empty response");
-                    narrativeText = "⚠️ The magical forces falter... The world seems to resist description. Try a different action.";
-                }
+                    new(ChatRole.System, NarratorSystemPrompt),
+                    new(ChatRole.User, $"{worldContext}\nAction: {playerInput}")
+                };
+
+                var resp = await chatClient.GetResponseAsync(narrativeMessages, cancellationToken: cancellationToken);
+                narrativeText = resp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+                if (string.IsNullOrWhiteSpace(narrativeText))
+                    narrativeText = "The world resists description. Try a different action.";
             }
-            catch (Exception narrativeEx)
+            catch (Exception ex)
             {
-                logger.LogError(narrativeEx, "Narrator call failed");
-                narrativeText = $"⚠️ The arcane forces falter... ({narrativeEx.Message})\n\nThe world resists your action. Try something different.";
+                logger.LogError(ex, "Narrator failed");
+                narrativeText = $"⚠️ {ex.Message}\n\nTry a different action.";
             }
 
             logger.LogInformation("Narrative: {Length} chars", narrativeText.Length);
-            var preview = narrativeText.Length > 200 ? narrativeText[..200] + "..." : narrativeText;
-            eventStream.Emit(new AgentEvent("Narrative ready", "Narrator", AgentEventKind.AgentOutput, preview));
+            eventStream.Emit(new AgentEvent("Narrative ready", "Narrator", AgentEventKind.AgentOutput,
+                narrativeText[..Math.Min(100, narrativeText.Length)]));
 
-            // Step 2: Generate action suggestions (isolated — failure here does NOT lose the narrative)
-            logger.LogDebug("Calling Suggestion agent...");
-            eventStream.Emit(new AgentEvent("Generating suggestions...", "Suggestion", AgentEventKind.AgentInvoked));
+            // Step 2: Suggestions — isolated short prompt
+            eventStream.Emit(new AgentEvent("Suggesting...", "Suggestion", AgentEventKind.AgentInvoked));
 
             List<SuggestedAction> suggestions;
             try
             {
-                var suggestionMessages = new List<ChatMessage>
+                var nearbyEntities = string.Join(", ", (worldState?.KnownEntities ?? []).Take(4));
+                var suggMessages = new List<ChatMessage>
                 {
                     new(ChatRole.System, SuggestionSystemPrompt),
-                    new(ChatRole.User, $"Location: {worldState?.CurrentLocation ?? "unknown"}\nSituation: {playerInput}\n\nGenerate 3-4 contextual action suggestions.")
+                    new(ChatRole.User, $"Location: {worldState?.CurrentLocation}. Nearby: {nearbyEntities}.")
                 };
 
-                var suggestionResponse = await chatClient.GetResponseAsync(suggestionMessages, cancellationToken: cancellationToken);
-                var suggestionText = suggestionResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-                suggestions = ParseSuggestions(suggestionText);
+                var suggResp = await chatClient.GetResponseAsync(suggMessages, cancellationToken: cancellationToken);
+                var suggText = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+                suggestions = ParseSuggestions(suggText);
                 logger.LogInformation("Suggestions: {Count}", suggestions.Count);
-                var suggPreview = suggestionText[..Math.Min(100, suggestionText.Length)];
-                eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput, suggPreview));
+                eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput));
             }
-            catch (Exception suggEx)
+            catch (Exception ex)
             {
-                logger.LogWarning(suggEx, "Suggestion call failed (content filter or error), using defaults");
-                eventStream.Emit(new AgentEvent("Using default suggestions", "Suggestion", AgentEventKind.AgentCompleted));
+                logger.LogWarning(ex, "Suggestion call failed, using defaults");
+                eventStream.Emit(new AgentEvent("Default suggestions", "Suggestion", AgentEventKind.AgentCompleted));
                 suggestions = DefaultSuggestions();
             }
 
-            // Step 3: Persist journal entry
+            // Keep RecentEvents trimmed to last 3 to limit future context sizes
+            if (worldState is not null)
+            {
+                worldState.RecentEvents ??= [];
+                worldState.RecentEvents.Add($"{playerInput[..Math.Min(40, playerInput.Length)]}: {narrativeText[..Math.Min(60, narrativeText.Length)]}");
+                if (worldState.RecentEvents.Count > 3)
+                    worldState.RecentEvents = worldState.RecentEvents[^3..];
+                await worldStateService.SaveState(worldState, cancellationToken);
+            }
+
             await PersistJournalEntry(saveSlotId, narrativeText, cancellationToken);
             await UpdateLastPlayed(saveSlotId, cancellationToken);
 
@@ -177,30 +148,30 @@ public class GameOrchestrator(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing turn for save {SaveSlotId}", saveSlotId);
-            eventStream.Emit(new AgentEvent($"Turn failed: {ex.Message}", "GameMaster", AgentEventKind.Error));
-            var errorNarrative = $"⚠️ The magical forces are disrupted... ({ex.Message})\n\nPlease try a different action.";
-            return new GameTurnResult(errorNarrative, DefaultSuggestions());
+            logger.LogError(ex, "Turn failed for {SaveSlotId}", saveSlotId);
+            eventStream.Emit(new AgentEvent("Turn failed", "GameMaster", AgentEventKind.Error, ex.Message));
+            return new GameTurnResult(
+                $"⚠️ The magical forces are disrupted... ({ex.Message})\n\nTry a different action.",
+                DefaultSuggestions());
         }
     }
 
     private async Task<WorldState> GenerateWorldStateAsync(Guid saveSlotId, string gameName, CancellationToken cancellationToken)
     {
-        logger.LogInformation("Generating world state from game name: {GameName}", gameName);
-        eventStream.Emit(new AgentEvent($"Building world for \"{gameName}\"...", "WorldGen", AgentEventKind.AgentInvoked));
+        logger.LogInformation("Generating world for: {GameName}", gameName);
+        eventStream.Emit(new AgentEvent("Building world...", "WorldGen", AgentEventKind.AgentInvoked));
 
         try
         {
             var messages = new List<ChatMessage>
             {
                 new(ChatRole.System, WorldGenSystemPrompt),
-                new(ChatRole.User, $"Game name: \"{gameName}\"\n\nGenerate the starting world state JSON.")
+                new(ChatRole.User, $"Game: \"{gameName}\"")
             };
 
             var response = await chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
             var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
 
-            // Strip markdown code fences if present
             if (json.Contains("```"))
             {
                 var start = json.IndexOf('{');
@@ -214,18 +185,16 @@ public class GameOrchestrator(
             {
                 generated.Id = Guid.NewGuid();
                 generated.SaveSlotId = saveSlotId;
-                logger.LogInformation("AI-generated world: {Biome} / {Location}", generated.CurrentBiome, generated.CurrentLocation);
                 eventStream.Emit(new AgentEvent($"World: {generated.CurrentLocation}", "WorldGen", AgentEventKind.AgentOutput));
                 return generated;
             }
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to generate world state from AI, using default");
-            eventStream.Emit(new AgentEvent($"World gen failed, using default", "WorldGen", AgentEventKind.Error));
+            logger.LogWarning(ex, "World gen failed, using default");
+            eventStream.Emit(new AgentEvent("Using default world", "WorldGen", AgentEventKind.Error));
         }
 
-        // Fallback default world
         return new WorldState
         {
             Id = Guid.NewGuid(),
@@ -234,52 +203,40 @@ public class GameOrchestrator(
             CurrentLocation = "Whispering Glade",
             TimeOfDay = "dawn",
             RegionDescription = "A misty forest clearing where ancient oaks stand sentinel over mossy stones.",
-            KnownEntities = ["Ancient Oak", "Moss-covered Stone", "Distant Light"],
-            RecentEvents = [$"You have arrived in \"{gameName}\". The adventure begins."]
+            KnownEntities = ["Ancient Oak", "Moss-covered Stone", "Distant Light", "Narrow Path"],
+            RecentEvents = [$"You have arrived in \"{gameName}\"."]
         };
     }
 
-    private static string BuildWorldContext(WorldState? worldState)
+    /// <summary>
+    /// Compact context kept under ~300 chars to avoid exceeding Apple Intelligence's context window.
+    /// Only includes the single most recent event to limit token usage.
+    /// </summary>
+    private static string BuildCompactContext(WorldState? w)
     {
-        if (worldState is null) return "World: unknown location, unknown time";
-
-        return $"""
-            World Context:
-            - Biome: {worldState.CurrentBiome}
-            - Location: {worldState.CurrentLocation}
-            - Time: {worldState.TimeOfDay}
-            - Description: {worldState.RegionDescription}
-            - Nearby: {string.Join(", ", worldState.KnownEntities)}
-            - Recent: {string.Join("; ", worldState.RecentEvents)}
-            """;
+        if (w is null) return "Location: unknown.";
+        var entities = string.Join(", ", (w.KnownEntities ?? []).Take(5));
+        var recent = (w.RecentEvents ?? []).LastOrDefault() ?? "";
+        return $"Biome: {w.CurrentBiome}. Location: {w.CurrentLocation}. Time: {w.TimeOfDay}. Here: {entities}. Last: {recent}";
     }
 
     private static List<SuggestedAction> ParseSuggestions(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return DefaultSuggestions();
-
         try
         {
-            // Strip markdown fences if present
-            var cleaned = json;
-            if (cleaned.Contains("```"))
+            if (json.Contains("```"))
             {
-                var start = cleaned.IndexOf('{');
-                var end = cleaned.LastIndexOf('}');
-                if (start >= 0 && end > start)
-                    cleaned = cleaned[start..(end + 1)];
+                var s = json.IndexOf('{');
+                var e = json.LastIndexOf('}');
+                if (s >= 0 && e > s) json = json[s..(e + 1)];
             }
-
-            var parsed = JsonSerializer.Deserialize(cleaned, GameJsonContext.Default.SuggestedActions);
+            var parsed = JsonSerializer.Deserialize(json, GameJsonContext.Default.SuggestedActions);
             if (parsed?.Actions is { Count: > 0 })
                 return parsed.Actions;
         }
-        catch (Exception)
-        {
-            // Fall through to defaults
-        }
-
+        catch { }
         return DefaultSuggestions();
     }
 
@@ -290,7 +247,7 @@ public class GameOrchestrator(
         new SuggestedAction("Wait", "wait and observe quietly"),
     ];
 
-    private async Task PersistJournalEntry(Guid saveSlotId, string narrativeText, CancellationToken cancellationToken)
+    private async Task PersistJournalEntry(Guid saveSlotId, string text, CancellationToken ct)
     {
         try
         {
@@ -298,36 +255,27 @@ public class GameOrchestrator(
             {
                 Id = Guid.NewGuid(),
                 SaveSlotId = saveSlotId,
-                EntryText = narrativeText,
+                EntryText = text,
                 Timestamp = DateTime.UtcNow,
                 Type = JournalEntryType.Narrative
             };
-            await store.Set(entry.Id.ToString(), entry, GameJsonContext.Default.JournalEntry, cancellationToken);
+            await store.Set(entry.Id.ToString(), entry, GameJsonContext.Default.JournalEntry, ct);
         }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to persist journal entry");
-        }
+        catch (Exception ex) { logger.LogWarning(ex, "Failed to persist journal entry"); }
     }
 
-    private async Task UpdateLastPlayed(Guid saveSlotId, CancellationToken cancellationToken)
+    private async Task UpdateLastPlayed(Guid saveSlotId, CancellationToken ct)
     {
         try
         {
-            var slots = await store.Query<SaveSlot>(
-                s => s.Id == saveSlotId,
-                GameJsonContext.Default.SaveSlot,
-                cancellationToken);
+            var slots = await store.Query<SaveSlot>(s => s.Id == saveSlotId, GameJsonContext.Default.SaveSlot, ct);
             var slot = slots.FirstOrDefault();
             if (slot is not null)
             {
                 slot.LastPlayedAt = DateTime.UtcNow;
-                await store.Set(slot.Id.ToString(), slot, GameJsonContext.Default.SaveSlot, cancellationToken);
+                await store.Set(slot.Id.ToString(), slot, GameJsonContext.Default.SaveSlot, ct);
             }
         }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to update last played timestamp");
-        }
+        catch (Exception ex) { logger.LogWarning(ex, "Failed to update last played"); }
     }
 }

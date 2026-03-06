@@ -16,6 +16,10 @@ public partial class GameViewModel(
     GameOrchestrator orchestrator,
     ILogger<GameViewModel> logger) : ObservableObject
 {
+    private SidebarViewModel? _sidebar;
+
+    // Set by GamePage after DI resolution
+    public void SetSidebar(SidebarViewModel sidebar) => _sidebar = sidebar;
     [ObservableProperty]
     private string playerInput = "";
 
@@ -56,6 +60,7 @@ public partial class GameViewModel(
             AddNarrative(result.Narrative);
             SetSuggestions(result.Suggestions);
             StatusMessage = "Ready";
+            _ = _sidebar?.RefreshAsync(SaveSlotId);
         }
         catch (Exception ex)
         {
@@ -92,6 +97,7 @@ public partial class GameViewModel(
             AddNarrative(result.Narrative);
             SetSuggestions(result.Suggestions);
             StatusMessage = "Ready";
+            _ = _sidebar?.RefreshAsync(SaveSlotId);
         }
         catch (Exception ex)
         {

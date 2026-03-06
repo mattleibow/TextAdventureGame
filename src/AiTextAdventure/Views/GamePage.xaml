@@ -9,7 +9,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
 
-    <!-- Split panel: 2/3 narrative | 1/3 events -->
+    <!-- Split panel: 2/3 narrative | 1/3 sidebar -->
     <Grid ColumnDefinitions="2*,*">
 
         <!-- ═══════════════════════════════════════════════ -->
@@ -19,7 +19,7 @@
               RowDefinitions="Auto,*,Auto,Auto,Auto"
               BackgroundColor="{StaticResource PanelBg}">
 
-            <!-- Row 0: Location / Status Bar -->
+            <!-- Row 0: Status Bar -->
             <Frame Grid.Row="0"
                    BackgroundColor="{StaticResource PageBg}"
                    BorderColor="{StaticResource BorderSubtle}"
@@ -99,7 +99,7 @@
                 </BindableLayout.ItemTemplate>
             </FlexLayout>
 
-            <!-- Row 4: Command Input Bar -->
+            <!-- Row 4: Command Input -->
             <Frame Grid.Row="4"
                    BackgroundColor="{StaticResource PageBg}"
                    BorderColor="{StaticResource BorderSubtle}"
@@ -107,7 +107,6 @@
                    Padding="12,10"
                    HasShadow="False">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                    <!-- ">" prompt character -->
                     <Label Grid.Column="0"
                            Text="›"
                            TextColor="{StaticResource Gold}"
@@ -135,92 +134,238 @@
         </Grid>
 
         <!-- ═══════════════════════════════════════════════ -->
-        <!-- RIGHT: Agent Events Panel (Scrying Mirror)      -->
+        <!-- RIGHT: Tabbed Sidebar                           -->
         <!-- ═══════════════════════════════════════════════ -->
         <Grid Grid.Column="1"
-              x:Name="EventsPanel"
+              x:Name="SidebarPanel"
               RowDefinitions="Auto,*"
               BackgroundColor="{StaticResource EventsBg}">
 
-            <!-- Panel Header -->
+            <!-- Tab bar -->
             <Frame Grid.Row="0"
                    BackgroundColor="{StaticResource PageBg}"
                    BorderColor="{StaticResource BorderSubtle}"
                    CornerRadius="0"
-                   Padding="10,8"
+                   Padding="4,6"
                    HasShadow="False">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="4">
-                    <Label Grid.Column="0" Text="🔮" FontSize="13" VerticalOptions="Center" />
-                    <Label Grid.Column="1"
-                           Text="OBSERVER"
-                           Style="{StaticResource SectionHeaderStyle}"
-                           FontSize="10"
-                           VerticalOptions="Center" />
-                    <Button Grid.Column="2"
-                            Text="Clear"
+                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="2">
+                    <Button Grid.Column="0" Text="📍"
                             Style="{StaticResource GhostButtonStyle}"
-                            FontSize="10"
-                            Command="{Binding ClearEventsCommand}" />
-                    <Button Grid.Column="3"
-                            Text="◀"
+                            FontSize="16" Padding="0"
+                            Command="{Binding SelectStatusCommand}"
+                            TextColor="{Binding IsStatusTab, Converter={StaticResource InvertBoolConverter}, ConverterParameter=Gold}" />
+                    <Button Grid.Column="1" Text="🎒"
                             Style="{StaticResource GhostButtonStyle}"
-                            FontSize="10"
-                            Command="{Binding ToggleVisibilityCommand}" />
+                            FontSize="16" Padding="0"
+                            Command="{Binding SelectPocketsCommand}" />
+                    <Button Grid.Column="2" Text="📜"
+                            Style="{StaticResource GhostButtonStyle}"
+                            FontSize="16" Padding="0"
+                            Command="{Binding SelectJournalCommand}" />
+                    <Button Grid.Column="3" Text="🔮"
+                            Style="{StaticResource GhostButtonStyle}"
+                            FontSize="16" Padding="0"
+                            Command="{Binding SelectEventsCommand}" />
                 </Grid>
             </Frame>
 
-            <!-- Events List -->
-            <CollectionView Grid.Row="1"
-                            ItemsSource="{Binding Events}"
-                            SelectionMode="None"
-                            BackgroundColor="{StaticResource EventsBg}">
-                <CollectionView.Header>
-                    <BoxView HeightRequest="6" Color="Transparent" />
-                </CollectionView.Header>
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="vm:AgentEventViewModel">
-                        <StackLayout Padding="6,2">
-                            <Frame BackgroundColor="{StaticResource CardBg}"
-                                   BorderColor="{StaticResource BorderSubtle}"
-                                   CornerRadius="4"
-                                   Padding="8,6"
-                                   HasShadow="False">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                                    <Label Grid.Column="0"
-                                           Text="{Binding Icon}"
+            <!-- Tab content area -->
+            <ScrollView Grid.Row="1">
+                <StackLayout>
+
+                    <!-- ── STATUS TAB ── -->
+                    <StackLayout IsVisible="{Binding IsStatusTab}" Padding="10,8" Spacing="8">
+                        <Label Text="📍 STATUS" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
+                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
+
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                            <Label Grid.Row="0" Grid.Column="0" Text="Location" Style="{StaticResource MutedLabelStyle}" FontSize="10" />
+                            <Label Grid.Row="0" Grid.Column="1" Text="{Binding CurrentLocation}" TextColor="{StaticResource GoldText}" FontSize="12" FontAttributes="Bold" />
+
+                            <Label Grid.Row="1" Grid.Column="0" Text="Biome" Style="{StaticResource MutedLabelStyle}" FontSize="10" />
+                            <Label Grid.Row="1" Grid.Column="1" Text="{Binding CurrentBiome}" TextColor="{StaticResource TextPrimary}" FontSize="12" />
+
+                            <Label Grid.Row="2" Grid.Column="0" Text="Time" Style="{StaticResource MutedLabelStyle}" FontSize="10" />
+                            <Label Grid.Row="2" Grid.Column="1" Text="{Binding TimeOfDay}" TextColor="{StaticResource TealText}" FontSize="12" />
+                        </Grid>
+
+                        <Label Text="{Binding RegionDescription}"
+                               Style="{StaticResource MutedLabelStyle}"
+                               FontSize="11"
+                               LineBreakMode="WordWrap"
+                               FontAttributes="Italic"
+                               Margin="0,4,0,0" />
+
+                        <Label Text="NEARBY" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,8,0,2" />
+                        <CollectionView ItemsSource="{Binding NearbyEntities}" SelectionMode="None" HeightRequest="120">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Label Text="{Binding .}"
+                                           TextColor="{StaticResource TextPrimary}"
                                            FontSize="12"
-                                           VerticalOptions="Start" />
-                                    <StackLayout Grid.Column="1" Spacing="2">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <Label Grid.Column="0"
-                                                   Text="{Binding AgentName}"
-                                                   FontSize="10"
-                                                   FontAttributes="Bold"
-                                                   TextColor="{Binding AgentColor}" />
+                                           Padding="0,3" />
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </StackLayout>
+
+                    <!-- ── POCKETS TAB ── -->
+                    <StackLayout IsVisible="{Binding IsPocketsTab}" Padding="10,8" Spacing="8">
+                        <Label Text="🎒 POCKETS" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
+                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
+
+                        <CollectionView ItemsSource="{Binding InventoryItems}" SelectionMode="None">
+                            <CollectionView.EmptyView>
+                                <Label Text="Empty pack."
+                                       Style="{StaticResource MutedLabelStyle}"
+                                       FontAttributes="Italic"
+                                       Margin="0,16"
+                                       HorizontalTextAlignment="Center" />
+                            </CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="x:Object">
+                                    <Frame Style="{StaticResource CardStyle}" Margin="0,0,0,6" Padding="10,8">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <StackLayout Grid.Column="0" Spacing="2">
+                                                <Label Text="{Binding ItemName}"
+                                                       TextColor="{StaticResource GoldText}"
+                                                       FontSize="13"
+                                                       FontAttributes="Bold" />
+                                                <Label Text="{Binding Description}"
+                                                       Style="{StaticResource MutedLabelStyle}"
+                                                       FontSize="11"
+                                                       LineBreakMode="WordWrap" />
+                                            </StackLayout>
                                             <Label Grid.Column="1"
-                                                   Text="{Binding TimeStamp}"
-                                                   FontSize="9"
-                                                   TextColor="{StaticResource TextDim}" />
+                                                   Text="{Binding Quantity}"
+                                                   TextColor="{StaticResource GoldText}"
+                                                   FontSize="13"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center" />
                                         </Grid>
-                                        <Label Text="{Binding Title}"
-                                               FontSize="11"
-                                               TextColor="{StaticResource TextPrimary}" />
-                                        <Label Text="{Binding Detail}"
-                                               FontSize="10"
-                                               TextColor="{StaticResource TextMuted}"
-                                               LineBreakMode="TailTruncation"
-                                               MaxLines="2"
-                                               IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
+                                    </Frame>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </StackLayout>
+
+                    <!-- ── JOURNAL TAB ── -->
+                    <StackLayout IsVisible="{Binding IsJournalTab}" Padding="10,8" Spacing="8">
+                        <Label Text="📜 JOURNAL" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
+                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
+
+                        <CollectionView ItemsSource="{Binding JournalEntries}" SelectionMode="None">
+                            <CollectionView.EmptyView>
+                                <Label Text="No entries yet."
+                                       Style="{StaticResource MutedLabelStyle}"
+                                       FontAttributes="Italic"
+                                       Margin="0,16"
+                                       HorizontalTextAlignment="Center" />
+                            </CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="x:Object">
+                                    <StackLayout Margin="0,0,0,8">
+                                        <Frame Style="{StaticResource CardStyle}" Padding="10,8">
+                                            <StackLayout Spacing="4">
+                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                    <Label Grid.Column="0"
+                                                           Text="{Binding Type}"
+                                                           TextColor="{StaticResource GoldText}"
+                                                           FontSize="9"
+                                                           FontAttributes="Bold"
+                                                           CharacterSpacing="1"
+                                                           VerticalOptions="Center" />
+                                                    <Label Grid.Column="2"
+                                                           Text="{Binding Timestamp, StringFormat='{0:HH:mm}'}"
+                                                           Style="{StaticResource MutedLabelStyle}"
+                                                           FontSize="9"
+                                                           VerticalOptions="Center" />
+                                                </Grid>
+                                                <Label Text="{Binding EntryText}"
+                                                       Style="{StaticResource NarrativeLabelStyle}"
+                                                       FontSize="12"
+                                                       LineBreakMode="WordWrap" />
+                                            </StackLayout>
+                                        </Frame>
                                     </StackLayout>
-                                </Grid>
-                            </Frame>
-                        </StackLayout>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </StackLayout>
+
+                    <!-- ── EVENTS TAB ── -->
+                    <StackLayout IsVisible="{Binding IsEventsTab}" Padding="10,8" Spacing="8"
+                                 BindingContext="{Binding EventsPanel}">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="4">
+                            <Label Grid.Column="0" Text="🔮" FontSize="13" VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="OBSERVER"
+                                   Style="{StaticResource SectionHeaderStyle}"
+                                   FontSize="10"
+                                   VerticalOptions="Center" />
+                            <Button Grid.Column="2"
+                                    Text="Clear"
+                                    Style="{StaticResource GhostButtonStyle}"
+                                    FontSize="10"
+                                    Command="{Binding ClearEventsCommand}" />
+                        </Grid>
+                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
+
+                        <CollectionView ItemsSource="{Binding Events}"
+                                        SelectionMode="None">
+                            <CollectionView.EmptyView>
+                                <Label Text="No events yet."
+                                       Style="{StaticResource MutedLabelStyle}"
+                                       FontAttributes="Italic"
+                                       Margin="0,16"
+                                       HorizontalTextAlignment="Center" />
+                            </CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AgentEventViewModel">
+                                    <StackLayout Margin="0,0,0,4">
+                                        <Frame BackgroundColor="{StaticResource CardBg}"
+                                               BorderColor="{StaticResource BorderSubtle}"
+                                               CornerRadius="4"
+                                               Padding="8,6"
+                                               HasShadow="False">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                                <Label Grid.Column="0"
+                                                       Text="{Binding Icon}"
+                                                       FontSize="12"
+                                                       VerticalOptions="Start" />
+                                                <StackLayout Grid.Column="1" Spacing="2">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <Label Grid.Column="0"
+                                                               Text="{Binding AgentName}"
+                                                               FontSize="10"
+                                                               FontAttributes="Bold"
+                                                               TextColor="{Binding AgentColor}" />
+                                                        <Label Grid.Column="1"
+                                                               Text="{Binding TimeStamp}"
+                                                               FontSize="9"
+                                                               TextColor="{StaticResource TextDim}" />
+                                                    </Grid>
+                                                    <Label Text="{Binding Title}"
+                                                           FontSize="11"
+                                                           TextColor="{StaticResource TextPrimary}" />
+                                                    <Label Text="{Binding Detail}"
+                                                           FontSize="10"
+                                                           TextColor="{StaticResource TextMuted}"
+                                                           LineBreakMode="TailTruncation"
+                                                           MaxLines="2"
+                                                           IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
+                                                </StackLayout>
+                                            </Grid>
+                                        </Frame>
+                                    </StackLayout>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </StackLayout>
+
+                </StackLayout>
+            </ScrollView>
         </Grid>
 
     </Grid>
 </ContentPage>
-
-
