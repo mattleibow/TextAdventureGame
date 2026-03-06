@@ -5,7 +5,7 @@ using AiTextAdventure.Services;
 
 namespace AiTextAdventure.ViewModels;
 
-public partial class InventoryViewModel(IWorldStateService worldStateService) : ObservableObject
+public partial class InventoryViewModel(WorldStateService worldStateService) : ObservableObject
 {
     [ObservableProperty]
     private Guid saveSlotId;

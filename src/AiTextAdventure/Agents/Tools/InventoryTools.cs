@@ -5,7 +5,7 @@ using AiTextAdventure.Services;
 
 namespace AiTextAdventure.Agents.Tools;
 
-public class InventoryTools(IWorldStateService worldStateService, Guid saveSlotId)
+public class InventoryTools(WorldStateService worldStateService, Guid saveSlotId)
 {
     [Description("Gets the player's current inventory items")]
     public async Task<string> GetInventory()

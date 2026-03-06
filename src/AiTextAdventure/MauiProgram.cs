@@ -60,14 +60,14 @@ public static class MauiProgram
         });
 
         // -- Observability --
-        services.AddSingleton<IEventStream, EventStream>();
+        services.AddSingleton<EventStream>();
 
         // -- Services --
-        services.AddSingleton<IWorldStateService, WorldStateService>();
-        services.AddSingleton<ISaveSlotService, SaveSlotService>();
+        services.AddSingleton<WorldStateService>();
+        services.AddSingleton<SaveSlotService>();
         services.AddSingleton<AgentFactory>();
         services.AddSingleton<GameWorkflowFactory>();
-        services.AddSingleton<IGameOrchestrator, GameOrchestrator>();
+        services.AddSingleton<GameOrchestrator>();
 
         // -- ViewModels --
         services.AddTransient<MainMenuViewModel>();

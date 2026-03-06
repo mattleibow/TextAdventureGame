@@ -6,7 +6,7 @@ using AiTextAdventure.Services;
 
 namespace AiTextAdventure.ViewModels;
 
-public partial class MainMenuViewModel(ISaveSlotService saveSlotService) : ObservableObject
+public partial class MainMenuViewModel(SaveSlotService saveSlotService) : ObservableObject
 {
     [ObservableProperty]
     private string newGameName = "";

@@ -5,7 +5,7 @@ using GameLocation = AiTextAdventure.Models.Documents.Location;
 
 namespace AiTextAdventure.Services;
 
-public class WorldStateService(IDocumentStore store) : IWorldStateService
+public class WorldStateService(IDocumentStore store)
 {
     public async Task<WorldState?> GetCurrentState(Guid saveSlotId, CancellationToken cancellationToken = default)
     {

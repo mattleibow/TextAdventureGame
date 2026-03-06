@@ -4,7 +4,7 @@ using Shiny.SqliteDocumentDb;
 
 namespace AiTextAdventure.Services;
 
-public class SaveSlotService(IDocumentStore store) : ISaveSlotService
+public class SaveSlotService(IDocumentStore store)
 {
     public async Task<IReadOnlyList<SaveSlot>> GetSaveSlots(CancellationToken cancellationToken = default) =>
         await store.GetAll<SaveSlot>(GameJsonContext.Default.SaveSlot, cancellationToken);

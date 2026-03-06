@@ -12,7 +12,7 @@ public record NarrativeParagraph(string Text)
 }
 
 public partial class GameViewModel(
-    IGameOrchestrator orchestrator) : ObservableObject
+    GameOrchestrator orchestrator) : ObservableObject
 {
     [ObservableProperty]
     private string playerInput = "";

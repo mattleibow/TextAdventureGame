@@ -14,7 +14,7 @@ namespace AiTextAdventure.Agents;
 /// </summary>
 public class AgentFactory(
     IChatClient chatClient,
-    IWorldStateService worldStateService,
+    WorldStateService worldStateService,
     ILoggerFactory loggerFactory)
 {
     public ChatClientAgent CreateGameMaster() => new(chatClient,
@@ -222,7 +222,7 @@ public class AgentFactory(
     /// Wraps an agent with observability middleware that emits input/output events to the event stream.
     /// See: https://learn.microsoft.com/en-us/agent-framework/agents/middleware/
     /// </summary>
-    public AIAgent WrapWithObservability(ChatClientAgent agent, IEventStream eventStream)
+    public AIAgent WrapWithObservability(ChatClientAgent agent, EventStream eventStream)
     {
         return agent.AsBuilder()
             .Use(

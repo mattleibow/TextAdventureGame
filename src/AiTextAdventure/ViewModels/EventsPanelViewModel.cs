@@ -50,7 +50,7 @@ public partial class EventsPanelViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<AgentEventViewModel> Events { get; } = [];
 
-    public EventsPanelViewModel(IEventStream eventStream)
+    public EventsPanelViewModel(EventStream eventStream)
     {
         _subscription = eventStream.Events.Subscribe(evt =>
         {

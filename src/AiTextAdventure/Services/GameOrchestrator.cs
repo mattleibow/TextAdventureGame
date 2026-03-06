@@ -9,6 +9,8 @@ using AiTextAdventure.Workflows;
 
 namespace AiTextAdventure.Services;
 
+public record GameTurnResult(string Narrative, List<SuggestedAction> Suggestions);
+
 /// <summary>
 /// Orchestrates a single player turn: creates a fresh workflow, feeds input,
 /// streams events to the UI, and persists state changes.
@@ -16,9 +18,9 @@ namespace AiTextAdventure.Services;
 /// </summary>
 public class GameOrchestrator(
     GameWorkflowFactory workflowFactory,
-    IWorldStateService worldStateService,
+    WorldStateService worldStateService,
     IDocumentStore store,
-    IEventStream eventStream) : IGameOrchestrator
+    EventStream eventStream)
 {
     public async Task<GameTurnResult> InitializeGameAsync(
         Guid saveSlotId,

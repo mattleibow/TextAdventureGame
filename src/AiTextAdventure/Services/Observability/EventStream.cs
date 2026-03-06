@@ -3,7 +3,7 @@ using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Observability;
 
-public class EventStream : IEventStream, IDisposable
+public class EventStream : IDisposable
 {
     private readonly Subject<AgentEvent> _subject = new();
 

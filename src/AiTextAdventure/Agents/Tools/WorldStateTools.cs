@@ -6,7 +6,7 @@ using AiTextAdventure.Services;
 
 namespace AiTextAdventure.Agents.Tools;
 
-public class WorldStateTools(IWorldStateService worldStateService, Guid saveSlotId)
+public class WorldStateTools(WorldStateService worldStateService, Guid saveSlotId)
 {
     [Description("Gets the current world state including biome, location, time of day, known entities, and recent events")]
     public async Task<string> GetWorldState()

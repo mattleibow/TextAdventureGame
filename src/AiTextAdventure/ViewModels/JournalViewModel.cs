@@ -5,7 +5,7 @@ using AiTextAdventure.Services;
 
 namespace AiTextAdventure.ViewModels;
 
-public partial class JournalViewModel(IWorldStateService worldStateService) : ObservableObject
+public partial class JournalViewModel(WorldStateService worldStateService) : ObservableObject
 {
     [ObservableProperty]
     private Guid saveSlotId;

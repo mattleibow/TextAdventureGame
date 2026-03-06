@@ -6,7 +6,7 @@ using AiTextAdventure.Services;
 
 namespace AiTextAdventure.Agents.Tools;
 
-public class LocationTools(IWorldStateService worldStateService, Guid saveSlotId)
+public class LocationTools(WorldStateService worldStateService, Guid saveSlotId)
 {
     [Description("Gets interactable entities and features at the current location")]
     public async Task<string> GetLocationEntities()
