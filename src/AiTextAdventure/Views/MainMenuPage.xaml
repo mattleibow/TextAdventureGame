@@ -4,81 +4,166 @@
              xmlns:vm="clr-namespace:AiTextAdventure.ViewModels"
              x:Class="AiTextAdventure.Views.MainMenuPage"
              x:DataType="vm:MainMenuViewModel"
-             Title="Adventure Awaits">
+             Title=""
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource PageBg}">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="24">
+    <Grid>
+        <!-- Full-screen content -->
+        <ScrollView>
+            <StackLayout Spacing="0" Padding="0,0,0,40">
 
-        <!-- Header -->
-        <StackLayout Grid.Row="0" Spacing="8" Margin="0,0,0,24">
-            <Label Text="AI Text Adventure"
-                   FontSize="36"
-                   FontAttributes="Bold"
-                   HorizontalTextAlignment="Center" />
-            <Label Text="An AI-Powered Story Experience"
-                   FontSize="16"
-                   HorizontalTextAlignment="Center"
-                   TextColor="Gray" />
-        </StackLayout>
+                <!-- ══════════════════════════════════════════ -->
+                <!--  TITLE SECTION — The Epic Header           -->
+                <!-- ══════════════════════════════════════════ -->
+                <StackLayout Spacing="0" Padding="32,60,32,40">
 
-        <!-- Save Slots -->
-        <ScrollView Grid.Row="1">
-            <StackLayout Spacing="12">
+                    <!-- Decorative top line -->
+                    <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="60,0,60,24" />
 
-                <!-- New Game Entry -->
-                <Frame BorderColor="DarkGreen" CornerRadius="8" Padding="16">
-                    <StackLayout Spacing="8">
-                        <Label Text="New Adventure" FontAttributes="Bold" FontSize="18" />
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <Entry Grid.Column="0"
-                                   Placeholder="Enter adventure name..."
-                                   Text="{Binding NewGameName}"
-                                   ReturnCommand="{Binding NewGameCommand}" />
-                            <Button Grid.Column="1"
-                                    Text="Start"
-                                    Command="{Binding NewGameCommand}"
-                                    BackgroundColor="DarkGreen"
-                                    TextColor="White" />
-                        </Grid>
-                    </StackLayout>
-                </Frame>
+                    <!-- Main title -->
+                    <Label Text="⚔  REALMS OF SHADOW  ⚔"
+                           Style="{StaticResource TitleStyle}"
+                           FontSize="28"
+                           Margin="0,0,0,8" />
 
-                <!-- Existing Save Slots -->
-                <Label Text="Continue Adventure"
-                       FontAttributes="Bold"
-                       FontSize="18"
-                       IsVisible="{Binding SaveSlots.Count, Converter={StaticResource GreaterThanZeroConverter}}" />
+                    <!-- Divider glyph -->
+                    <Label Text="✦  ✦  ✦"
+                           TextColor="{StaticResource GoldDim}"
+                           FontSize="14"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,0,16"
+                           CharacterSpacing="8" />
 
-                <CollectionView ItemsSource="{Binding SaveSlots}" SelectionMode="None">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="x:Object">
-                            <Frame BorderColor="Gray" CornerRadius="8" Padding="16" Margin="0,0,0,8">
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                    <StackLayout Grid.Column="0">
-                                        <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="16" />
-                                        <Label Text="{Binding LastPlayedAt, StringFormat='Last played: {0:MMM d, yyyy}'}"
-                                               TextColor="Gray" FontSize="12" />
-                                    </StackLayout>
-                                    <Button Grid.Column="1"
-                                            Text="Play"
-                                            BackgroundColor="DarkBlue"
-                                            TextColor="White"
-                                            Clicked="OnPlaySlotClicked"
-                                            CommandParameter="{Binding .}" />
-                                    <Button Grid.Column="2"
-                                            Text="Delete"
-                                            BackgroundColor="DarkRed"
-                                            TextColor="White"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainMenuViewModel}}, Path=DeleteSlotCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-                            </Frame>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
+                    <!-- Tagline -->
+                    <Label Text="AN AI-POWERED TEXT ADVENTURE"
+                           Style="{StaticResource SubtitleStyle}"
+                           FontSize="12"
+                           CharacterSpacing="4"
+                           Margin="0,0,0,4" />
 
-                <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />
+                    <Label Text="Your story is waiting to be told..."
+                           TextColor="{StaticResource TextDim}"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           FontAttributes="Italic" />
+
+                    <!-- Decorative bottom line -->
+                    <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="60,24,60,0" />
+                </StackLayout>
+
+                <!-- ══════════════════════════════════════════ -->
+                <!--  NEW ADVENTURE CARD                        -->
+                <!-- ══════════════════════════════════════════ -->
+                <StackLayout Padding="24,0" Spacing="12">
+
+                    <Label Text="🌟  BEGIN A NEW ADVENTURE"
+                           Style="{StaticResource SectionHeaderStyle}"
+                           Margin="4,0,0,4" />
+
+                    <Frame Style="{StaticResource GoldCardStyle}">
+                        <StackLayout Spacing="16">
+                            <Label Text="Name your quest, brave traveller."
+                                   TextColor="{StaticResource TextMuted}"
+                                   FontSize="13"
+                                   FontAttributes="Italic" />
+
+                            <!-- Entry + Button row -->
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                <Frame Grid.Column="0"
+                                       BackgroundColor="{StaticResource InputBg}"
+                                       BorderColor="{StaticResource BorderSubtle}"
+                                       CornerRadius="4"
+                                       Padding="12,0"
+                                       HasShadow="False">
+                                    <Entry Placeholder="Enter adventure name..."
+                                           Text="{Binding NewGameName}"
+                                           ReturnCommand="{Binding NewGameCommand}"
+                                           TextColor="{StaticResource TextPrimary}"
+                                           PlaceholderColor="{StaticResource TextDim}"
+                                           BackgroundColor="Transparent"
+                                           FontSize="14" />
+                                </Frame>
+                                <Button Grid.Column="1"
+                                        Text="⚔  START"
+                                        Command="{Binding NewGameCommand}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        IsEnabled="{Binding IsLoading, Converter={StaticResource InvertBoolConverter}}" />
+                            </Grid>
+                        </StackLayout>
+                    </Frame>
+
+                    <!-- ══════════════════════════════════════ -->
+                    <!--  SAVED GAMES                           -->
+                    <!-- ══════════════════════════════════════ -->
+                    <Label Text="🏰  CONTINUE YOUR LEGEND"
+                           Style="{StaticResource SectionHeaderStyle}"
+                           Margin="4,16,0,4"
+                           IsVisible="{Binding SaveSlots.Count, Converter={StaticResource GreaterThanZeroConverter}}" />
+
+                    <CollectionView ItemsSource="{Binding SaveSlots}" SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="x:Object">
+                                <Frame Style="{StaticResource CardStyle}" Margin="0,0,0,10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+                                        <!-- Icon -->
+                                        <Label Grid.Column="0"
+                                               Text="🗡️"
+                                               FontSize="28"
+                                               VerticalOptions="Center" />
+
+                                        <!-- Info -->
+                                        <StackLayout Grid.Column="1" VerticalOptions="Center" Spacing="3">
+                                            <Label Text="{Binding Name}"
+                                                   FontAttributes="Bold"
+                                                   FontSize="16"
+                                                   TextColor="{StaticResource TextPrimary}" />
+                                            <Label Text="{Binding LastPlayedAt, StringFormat='Last ventured: {0:MMM d, yyyy}'}"
+                                                   TextColor="{StaticResource TextMuted}"
+                                                   FontSize="11"
+                                                   FontAttributes="Italic" />
+                                        </StackLayout>
+
+                                        <!-- Continue -->
+                                        <Button Grid.Column="2"
+                                                Text="Continue"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                Padding="14,8"
+                                                FontSize="13"
+                                                Clicked="OnPlaySlotClicked"
+                                                CommandParameter="{Binding .}" />
+
+                                        <!-- Delete -->
+                                        <Button Grid.Column="3"
+                                                Text="✕"
+                                                Style="{StaticResource DangerButtonStyle}"
+                                                Padding="10,8"
+                                                FontSize="13"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainMenuViewModel}}, Path=DeleteSlotCommand}"
+                                                CommandParameter="{Binding .}" />
+                                    </Grid>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <!-- Loading -->
+                    <ActivityIndicator IsRunning="{Binding IsLoading}"
+                                       IsVisible="{Binding IsLoading}"
+                                       Color="{StaticResource Gold}"
+                                       Margin="0,8" />
+                </StackLayout>
+
+                <!-- Bottom decoration -->
+                <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="80,32,80,0" />
+                <Label Text="⚰️  Many have tried.  Few have returned.  ⚰️"
+                       TextColor="{StaticResource TextDim}"
+                       FontSize="11"
+                       FontAttributes="Italic"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,12,0,0" />
+
             </StackLayout>
         </ScrollView>
-
     </Grid>
 </ContentPage>

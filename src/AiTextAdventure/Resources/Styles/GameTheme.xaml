@@ -3,37 +3,231 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                     xmlns:conv="clr-namespace:AiTextAdventure.Converters">
 
-    <!-- Game color palette -->
-    <Color x:Key="GameBackground">#0A0A1A</Color>
-    <Color x:Key="GamePanelBackground">#111128</Color>
-    <Color x:Key="EventsPanelBackground">#0D0D1A</Color>
-    <Color x:Key="NarrativeText">#E8E8F0</Color>
-    <Color x:Key="AccentGold">#D4AF37</Color>
-    <Color x:Key="AccentRed">#C0392B</Color>
-    <Color x:Key="AccentBlue">#2980B9</Color>
-    <Color x:Key="SubtleGray">#666688</Color>
+    <!-- ══════════════════════════════════════════ -->
+    <!--  DARK FANTASY ADVENTURE PALETTE            -->
+    <!-- ══════════════════════════════════════════ -->
 
-    <!-- Value Converters -->
+    <!-- Backgrounds -->
+    <Color x:Key="PageBg">#0D0D18</Color>
+    <Color x:Key="PanelBg">#13131F</Color>
+    <Color x:Key="CardBg">#1A1A2E</Color>
+    <Color x:Key="CardBgAlt">#1E1E30</Color>
+    <Color x:Key="InputBg">#111120</Color>
+    <Color x:Key="EventsBg">#0B0B16</Color>
+
+    <!-- Borders -->
+    <Color x:Key="BorderSubtle">#2D2D48</Color>
+    <Color x:Key="BorderGold">#8B6914</Color>
+    <Color x:Key="BorderGoldBright">#D4A017</Color>
+    <Color x:Key="BorderTeal">#0F6B70</Color>
+
+    <!-- Primary Accent: Warm Gold -->
+    <Color x:Key="Gold">#E2B714</Color>
+    <Color x:Key="GoldDim">#A07A0A</Color>
+    <Color x:Key="GoldText">#F0C842</Color>
+
+    <!-- Secondary Accent: Mystical Teal -->
+    <Color x:Key="Teal">#0F969C</Color>
+    <Color x:Key="TealDim">#0A6B70</Color>
+    <Color x:Key="TealText">#4ECDC4</Color>
+
+    <!-- Text -->
+    <Color x:Key="TextPrimary">#F5E6CA</Color>
+    <Color x:Key="TextNarrative">#EDE0D4</Color>
+    <Color x:Key="TextMuted">#7A7A9A</Color>
+    <Color x:Key="TextDim">#505070</Color>
+    <Color x:Key="TextWhite">#FFFFFF</Color>
+
+    <!-- Status -->
+    <Color x:Key="ColorDanger">#9B2335</Color>
+    <Color x:Key="ColorSuccess">#1A936F</Color>
+    <Color x:Key="ColorWarning">#C8860A</Color>
+    <Color x:Key="ColorInfo">#2980B9</Color>
+
+    <!-- Legacy aliases for existing XAML compatibility -->
+    <Color x:Key="GameBackground">#0D0D18</Color>
+    <Color x:Key="GamePanelBackground">#13131F</Color>
+    <Color x:Key="EventsPanelBackground">#0B0B16</Color>
+    <Color x:Key="NarrativeText">#EDE0D4</Color>
+    <Color x:Key="AccentGold">#E2B714</Color>
+    <Color x:Key="AccentRed">#9B2335</Color>
+    <Color x:Key="AccentBlue">#2980B9</Color>
+    <Color x:Key="SubtleGray">#505070</Color>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!--  VALUE CONVERTERS                          -->
+    <!-- ══════════════════════════════════════════ -->
     <conv:InvertBoolConverter x:Key="InvertBoolConverter" />
     <conv:NotNullConverter x:Key="NotNullConverter" />
     <conv:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter" />
 
-    <!-- Base button style for action suggestions -->
-    <Style x:Key="SuggestionButtonStyle" TargetType="Button">
-        <Setter Property="BackgroundColor" Value="#2C3E50" />
-        <Setter Property="TextColor" Value="#E8E8F0" />
-        <Setter Property="CornerRadius" Value="16" />
+    <!-- ══════════════════════════════════════════ -->
+    <!--  GLOBAL PAGE STYLE                         -->
+    <!-- ══════════════════════════════════════════ -->
+    <Style TargetType="ContentPage" ApplyToDerivedTypes="True">
+        <Setter Property="BackgroundColor" Value="{StaticResource PageBg}" />
+    </Style>
+
+    <Style TargetType="Shell" ApplyToDerivedTypes="True">
+        <Setter Property="Shell.BackgroundColor" Value="{StaticResource PageBg}" />
+        <Setter Property="Shell.ForegroundColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Shell.TitleColor" Value="{StaticResource GoldText}" />
+        <Setter Property="Shell.NavBarHasShadow" Value="False" />
+        <Setter Property="BackgroundColor" Value="{StaticResource PageBg}" />
+    </Style>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!--  TYPOGRAPHY STYLES                         -->
+    <!-- ══════════════════════════════════════════ -->
+
+    <!-- Titles -->
+    <Style x:Key="TitleStyle" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource GoldText}" />
+        <Setter Property="FontSize" Value="36" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="HorizontalTextAlignment" Value="Center" />
+        <Setter Property="CharacterSpacing" Value="3" />
+    </Style>
+
+    <Style x:Key="SubtitleStyle" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="HorizontalTextAlignment" Value="Center" />
+        <Setter Property="CharacterSpacing" Value="1" />
+    </Style>
+
+    <Style x:Key="SectionHeaderStyle" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource GoldText}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="CharacterSpacing" Value="2" />
+    </Style>
+
+    <!-- Narrative text -->
+    <Style x:Key="NarrativeLabelStyle" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextNarrative}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="LineBreakMode" Value="WordWrap" />
+        <Setter Property="LineHeight" Value="1.6" />
+    </Style>
+
+    <!-- Muted text -->
+    <Style x:Key="MutedLabelStyle" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!--  BUTTON STYLES                             -->
+    <!-- ══════════════════════════════════════════ -->
+
+    <!-- Primary CTA: gold-bordered adventure button -->
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource GoldText}" />
+        <Setter Property="BorderColor" Value="{StaticResource Gold}" />
+        <Setter Property="BorderWidth" Value="1.5" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="Padding" Value="24,12" />
+        <Setter Property="CharacterSpacing" Value="1" />
+    </Style>
+
+    <!-- Danger button -->
+    <Style x:Key="DangerButtonStyle" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="#CC4444" />
+        <Setter Property="BorderColor" Value="#6B2020" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Padding" Value="12,8" />
+    </Style>
+
+    <!-- Ghost button (subtle) -->
+    <Style x:Key="GhostButtonStyle" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+        <Setter Property="BorderColor" Value="Transparent" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <!-- Suggested action buttons (fantasy flavor) -->
+    <Style x:Key="SuggestionButtonStyle" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource CardBg}" />
+        <Setter Property="TextColor" Value="{StaticResource GoldText}" />
+        <Setter Property="BorderColor" Value="{StaticResource BorderGold}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="14,8" />
         <Setter Property="Margin" Value="4" />
         <Setter Property="FontSize" Value="13" />
     </Style>
 
-    <!-- Narrative label style -->
-    <Style x:Key="NarrativeLabelStyle" TargetType="Label">
-        <Setter Property="TextColor" Value="#E8E8F0" />
-        <Setter Property="FontSize" Value="15" />
-        <Setter Property="LineBreakMode" Value="WordWrap" />
-        <Setter Property="LineHeight" Value="1.4" />
+    <!-- Send/submit button -->
+    <Style x:Key="SendButtonStyle" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource Gold}" />
+        <Setter Property="TextColor" Value="{StaticResource PageBg}" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!--  INPUT STYLES                              -->
+    <!-- ══════════════════════════════════════════ -->
+    <Style x:Key="CommandEntryStyle" TargetType="Entry">
+        <Setter Property="BackgroundColor" Value="{StaticResource InputBg}" />
+        <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="PlaceholderColor" Value="{StaticResource TextDim}" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!--  CARD / FRAME STYLES                       -->
+    <!-- ══════════════════════════════════════════ -->
+    <Style x:Key="CardStyle" TargetType="Frame">
+        <Setter Property="BackgroundColor" Value="{StaticResource CardBg}" />
+        <Setter Property="BorderColor" Value="{StaticResource BorderSubtle}" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="HasShadow" Value="False" />
+    </Style>
+
+    <Style x:Key="GoldCardStyle" TargetType="Frame">
+        <Setter Property="BackgroundColor" Value="{StaticResource CardBg}" />
+        <Setter Property="BorderColor" Value="{StaticResource BorderGold}" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="HasShadow" Value="False" />
+    </Style>
+
+    <Style x:Key="NarrativeCardStyle" TargetType="Frame">
+        <Setter Property="BackgroundColor" Value="{StaticResource CardBgAlt}" />
+        <Setter Property="BorderColor" Value="{StaticResource BorderSubtle}" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="16,12" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="HasShadow" Value="False" />
+    </Style>
+
+    <!-- ══════════════════════════════════════════ -->
+    <!--  SEPARATOR                                 -->
+    <!-- ══════════════════════════════════════════ -->
+    <Style x:Key="SeparatorStyle" TargetType="BoxView">
+        <Setter Property="Color" Value="{StaticResource BorderSubtle}" />
+        <Setter Property="HeightRequest" Value="1" />
+        <Setter Property="Margin" Value="0,12" />
+    </Style>
+
+    <Style x:Key="GoldSeparatorStyle" TargetType="BoxView">
+        <Setter Property="Color" Value="{StaticResource BorderGold}" />
+        <Setter Property="HeightRequest" Value="1" />
+        <Setter Property="Margin" Value="0,8" />
     </Style>
 
 </ResourceDictionary>
+

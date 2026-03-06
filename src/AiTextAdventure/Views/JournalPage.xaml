@@ -4,30 +4,93 @@
              xmlns:vm="clr-namespace:AiTextAdventure.ViewModels"
              x:Class="AiTextAdventure.Views.JournalPage"
              x:DataType="vm:JournalViewModel"
-             Title="Journal">
+             Title=""
+             BackgroundColor="{StaticResource PageBg}">
 
-    <Grid RowDefinitions="Auto,*" Padding="16">
+    <Grid RowDefinitions="Auto,*">
 
-        <Label Grid.Row="0" Text="Adventure Journal" FontSize="24" FontAttributes="Bold" Margin="0,0,0,16" />
+        <!-- Header -->
+        <Frame Grid.Row="0"
+               BackgroundColor="{StaticResource PageBg}"
+               BorderColor="{StaticResource BorderGold}"
+               CornerRadius="0"
+               Padding="20,16"
+               HasShadow="False">
+            <StackLayout Spacing="4">
+                <Label Text="📜  EXPLORER'S CHRONICLE"
+                       Style="{StaticResource SectionHeaderStyle}"
+                       FontSize="16" />
+                <Label Text="A record of your deeds and discoveries"
+                       Style="{StaticResource MutedLabelStyle}"
+                       FontAttributes="Italic" />
+            </StackLayout>
+        </Frame>
 
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Entries}">
+        <!-- Journal Entries -->
+        <CollectionView Grid.Row="1"
+                        ItemsSource="{Binding Entries}"
+                        Margin="16,12">
             <CollectionView.EmptyView>
-                <Label Text="No journal entries yet. Start your adventure!" HorizontalTextAlignment="Center"
-                       TextColor="Gray" Margin="0,32" />
+                <StackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="12" Margin="32">
+                    <Label Text="📜"
+                           FontSize="48"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="No entries yet."
+                           TextColor="{StaticResource TextMuted}"
+                           FontSize="16"
+                           HorizontalTextAlignment="Center"
+                           FontAttributes="Bold" />
+                    <Label Text="Begin your adventure to write your legend!"
+                           TextColor="{StaticResource TextDim}"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           FontAttributes="Italic" />
+                </StackLayout>
             </CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="x:Object">
-                    <StackLayout Padding="0,8">
-                        <Grid ColumnDefinitions="Auto,*">
-                            <Label Grid.Column="0" Text="{Binding Type, StringFormat='[{0}]'}"
-                                   TextColor="Gold" FontSize="12" Margin="0,0,8,0" VerticalOptions="Start" />
-                            <StackLayout Grid.Column="1">
-                                <Label Text="{Binding EntryText}" FontSize="14" LineBreakMode="WordWrap" />
-                                <Label Text="{Binding Timestamp, StringFormat='{0:MMM d, yyyy HH:mm}'}"
-                                       TextColor="Gray" FontSize="11" HorizontalTextAlignment="End" />
+                    <StackLayout Margin="0,0,0,10">
+                        <Frame Style="{StaticResource CardStyle}">
+                            <StackLayout Spacing="8">
+                                <!-- Entry type badge + timestamp -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <Frame Grid.Column="0"
+                                           BackgroundColor="{StaticResource CardBgAlt}"
+                                           BorderColor="{StaticResource BorderGold}"
+                                           CornerRadius="4"
+                                           Padding="8,4"
+                                           HasShadow="False">
+                                        <Label Text="{Binding Type}"
+                                               TextColor="{StaticResource GoldText}"
+                                               FontSize="10"
+                                               FontAttributes="Bold"
+                                               CharacterSpacing="1" />
+                                    </Frame>
+                                    <BoxView Grid.Column="1"
+                                             Style="{StaticResource SeparatorStyle}"
+                                             Margin="0,0,0,0"
+                                             VerticalOptions="Center"
+                                             HeightRequest="1" />
+                                    <Label Grid.Column="2"
+                                           Text="{Binding Timestamp, StringFormat='{0:MMM d}'}"
+                                           Style="{StaticResource MutedLabelStyle}"
+                                           FontSize="10"
+                                           VerticalOptions="Center" />
+                                </Grid>
+
+                                <!-- Entry text -->
+                                <Label Text="{Binding EntryText}"
+                                       Style="{StaticResource NarrativeLabelStyle}"
+                                       FontSize="14" />
+
+                                <!-- Full timestamp -->
+                                <Label Text="{Binding Timestamp, StringFormat='{0:HH:mm}'}"
+                                       Style="{StaticResource MutedLabelStyle}"
+                                       FontSize="10"
+                                       HorizontalTextAlignment="End"
+                                       FontAttributes="Italic" />
                             </StackLayout>
-                        </Grid>
-                        <BoxView HeightRequest="1" Color="DarkGray" Margin="0,8" />
+                        </Frame>
                     </StackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

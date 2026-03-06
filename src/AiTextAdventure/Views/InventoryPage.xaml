@@ -4,28 +4,94 @@
              xmlns:vm="clr-namespace:AiTextAdventure.ViewModels"
              x:Class="AiTextAdventure.Views.InventoryPage"
              x:DataType="vm:InventoryViewModel"
-             Title="Inventory">
+             Title=""
+             BackgroundColor="{StaticResource PageBg}">
 
-    <Grid RowDefinitions="Auto,*" Padding="16">
+    <Grid RowDefinitions="Auto,*">
 
-        <Label Grid.Row="0" Text="Your Items" FontSize="24" FontAttributes="Bold" Margin="0,0,0,16" />
+        <!-- Header -->
+        <Frame Grid.Row="0"
+               BackgroundColor="{StaticResource PageBg}"
+               BorderColor="{StaticResource BorderGold}"
+               CornerRadius="0"
+               Padding="20,16"
+               HasShadow="False">
+            <StackLayout Spacing="4">
+                <Label Text="🎒  ADVENTURER'S PACK"
+                       Style="{StaticResource SectionHeaderStyle}"
+                       FontSize="16" />
+                <Label Text="The tools of your legend"
+                       Style="{StaticResource MutedLabelStyle}"
+                       FontAttributes="Italic" />
+            </StackLayout>
+        </Frame>
 
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}">
+        <!-- Items -->
+        <CollectionView Grid.Row="1"
+                        ItemsSource="{Binding Items}"
+                        Margin="16,12">
             <CollectionView.EmptyView>
-                <Label Text="Your pockets are empty." HorizontalTextAlignment="Center"
-                       TextColor="Gray" Margin="0,32" />
+                <StackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="12" Margin="32">
+                    <Label Text="🎒"
+                           FontSize="48"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="Your pack is empty."
+                           TextColor="{StaticResource TextMuted}"
+                           FontSize="16"
+                           HorizontalTextAlignment="Center"
+                           FontAttributes="Bold" />
+                    <Label Text="Adventure awaits — go forth and discover!"
+                           TextColor="{StaticResource TextDim}"
+                           FontSize="13"
+                           HorizontalTextAlignment="Center"
+                           FontAttributes="Italic" />
+                </StackLayout>
             </CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="x:Object">
-                    <Frame BorderColor="Gray" CornerRadius="8" Padding="12" Margin="0,4">
-                        <Grid ColumnDefinitions="Auto,*">
-                            <Label Grid.Column="0" Text="🎒" FontSize="24" VerticalOptions="Center" Margin="0,0,12,0" />
-                            <StackLayout Grid.Column="1">
-                                <Label Text="{Binding ItemName}" FontAttributes="Bold" FontSize="16" />
-                                <Label Text="{Binding Description}" TextColor="Gray" FontSize="13" />
-                                <Label Text="{Binding Quantity, StringFormat='Quantity: {0}'}"
-                                       TextColor="Silver" FontSize="12" />
+                    <Frame Style="{StaticResource CardStyle}" Margin="0,0,0,10">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                            <!-- Item icon area -->
+                            <Frame Grid.Column="0"
+                                   BackgroundColor="{StaticResource CardBgAlt}"
+                                   BorderColor="{StaticResource BorderGold}"
+                                   CornerRadius="6"
+                                   Padding="10"
+                                   HasShadow="False"
+                                   WidthRequest="52"
+                                   HeightRequest="52">
+                                <Label Text="⚗️"
+                                       FontSize="22"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Frame>
+
+                            <!-- Info -->
+                            <StackLayout Grid.Column="1" VerticalOptions="Center" Spacing="4">
+                                <Label Text="{Binding ItemName}"
+                                       FontAttributes="Bold"
+                                       FontSize="15"
+                                       TextColor="{StaticResource GoldText}" />
+                                <Label Text="{Binding Description}"
+                                       TextColor="{StaticResource TextMuted}"
+                                       FontSize="13"
+                                       LineBreakMode="WordWrap" />
                             </StackLayout>
+
+                            <!-- Quantity badge -->
+                            <Frame Grid.Column="2"
+                                   BackgroundColor="{StaticResource CardBgAlt}"
+                                   BorderColor="{StaticResource BorderSubtle}"
+                                   CornerRadius="12"
+                                   Padding="10,4"
+                                   HasShadow="False"
+                                   VerticalOptions="Center">
+                                <Label Text="{Binding Quantity}"
+                                       TextColor="{StaticResource GoldText}"
+                                       FontAttributes="Bold"
+                                       FontSize="14"
+                                       HorizontalTextAlignment="Center" />
+                            </Frame>
                         </Grid>
                     </Frame>
                 </DataTemplate>

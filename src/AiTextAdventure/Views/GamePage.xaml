@@ -5,133 +5,216 @@
              xmlns:models="clr-namespace:AiTextAdventure.Models"
              x:Class="AiTextAdventure.Views.GamePage"
              x:DataType="vm:GameViewModel"
-             Title="Adventure"
-             Shell.NavBarIsVisible="False">
+             Title=""
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{StaticResource PageBg}">
 
-    <!-- Split panel: 2/3 game | 1/3 events -->
+    <!-- Split panel: 2/3 narrative | 1/3 events -->
     <Grid ColumnDefinitions="2*,*">
 
         <!-- ═══════════════════════════════════════════════ -->
         <!-- LEFT: Game Panel                                -->
         <!-- ═══════════════════════════════════════════════ -->
-        <Grid Grid.Column="0" RowDefinitions="*,Auto,Auto" Padding="16,8">
+        <Grid Grid.Column="0"
+              RowDefinitions="Auto,*,Auto,Auto,Auto"
+              BackgroundColor="{StaticResource PanelBg}">
 
-            <!-- Narrative History -->
-            <ScrollView Grid.Row="0" x:Name="NarrativeScroll">
-                <CollectionView ItemsSource="{Binding NarrativeHistory}"
-                                x:Name="NarrativeList">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NarrativeParagraph">
-                            <StackLayout Padding="0,8">
-                                <Label Text="{Binding Text}"
-                                       FontSize="15"
-                                       LineBreakMode="WordWrap"
-                                       TextColor="White" />
-                                <Label Text="{Binding Timestamp, StringFormat='{0:HH:mm}'}"
-                                       FontSize="10"
-                                       TextColor="Gray"
-                                       HorizontalTextAlignment="End" />
-                                <BoxView HeightRequest="1" Color="DarkGray" Margin="0,4" />
-                            </StackLayout>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
-            </ScrollView>
+            <!-- Row 0: Location / Status Bar -->
+            <Frame Grid.Row="0"
+                   BackgroundColor="{StaticResource PageBg}"
+                   BorderColor="{StaticResource BorderSubtle}"
+                   CornerRadius="0"
+                   Padding="16,8"
+                   HasShadow="False">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Label Grid.Column="0"
+                           Text="⚔  REALMS OF SHADOW"
+                           TextColor="{StaticResource GoldText}"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           CharacterSpacing="1"
+                           VerticalOptions="Center" />
+                    <Label Grid.Column="2"
+                           Text="🌙"
+                           FontSize="16"
+                           VerticalOptions="Center" />
+                </Grid>
+            </Frame>
 
-            <!-- Suggested Actions -->
-            <FlexLayout Grid.Row="1"
+            <!-- Row 1: Narrative History -->
+            <CollectionView Grid.Row="1"
+                            ItemsSource="{Binding NarrativeHistory}"
+                            x:Name="NarrativeList"
+                            SelectionMode="None"
+                            BackgroundColor="{StaticResource PanelBg}">
+                <CollectionView.Header>
+                    <BoxView HeightRequest="12" Color="Transparent" />
+                </CollectionView.Header>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:NarrativeParagraph">
+                        <Grid Padding="12,0,12,8">
+                            <Frame Style="{StaticResource NarrativeCardStyle}">
+                                <StackLayout Spacing="8">
+                                    <Label Text="{Binding Text}"
+                                           Style="{StaticResource NarrativeLabelStyle}" />
+                                    <Label Text="{Binding Timestamp, StringFormat='{0:HH:mm}'}"
+                                           Style="{StaticResource MutedLabelStyle}"
+                                           FontSize="10"
+                                           HorizontalTextAlignment="End" />
+                                </StackLayout>
+                            </Frame>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+                <CollectionView.Footer>
+                    <BoxView HeightRequest="4" Color="Transparent" />
+                </CollectionView.Footer>
+            </CollectionView>
+
+            <!-- Row 2: Processing indicator -->
+            <ActivityIndicator Grid.Row="2"
+                               IsRunning="{Binding IsProcessing}"
+                               IsVisible="{Binding IsProcessing}"
+                               Color="{StaticResource Gold}"
+                               HeightRequest="24"
+                               Margin="16,4" />
+
+            <!-- Row 3: Suggested Actions -->
+            <FlexLayout Grid.Row="3"
                         Wrap="Wrap"
                         JustifyContent="Start"
                         AlignItems="Center"
-                        Margin="0,8">
+                        Margin="12,4,12,4">
                 <BindableLayout.ItemsSource>
                     <Binding Path="SuggestedActions" />
                 </BindableLayout.ItemsSource>
                 <BindableLayout.ItemTemplate>
                     <DataTemplate x:DataType="models:SuggestedAction">
                         <Button Text="{Binding Label}"
-                                Margin="4"
-                                Padding="12,8"
-                                CornerRadius="16"
-                                BackgroundColor="#2C3E50"
-                                TextColor="White"
-                                FontSize="13"
+                                Style="{StaticResource SuggestionButtonStyle}"
+                                IsEnabled="{Binding Source={RelativeSource AncestorType={x:Type vm:GameViewModel}}, Path=IsProcessing, Converter={StaticResource InvertBoolConverter}}"
                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:GameViewModel}}, Path=SubmitActionCommand}"
                                 CommandParameter="{Binding ActionText}" />
                     </DataTemplate>
                 </BindableLayout.ItemTemplate>
             </FlexLayout>
 
-            <!-- Free-text Input -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,8,0,0">
-                <Entry Grid.Column="0"
-                       Placeholder="What do you do?"
-                       Text="{Binding PlayerInput}"
-                       ReturnCommand="{Binding SubmitActionCommand}"
-                       IsEnabled="{Binding IsProcessing, Converter={StaticResource InvertBoolConverter}}"
-                       TextColor="White"
-                       PlaceholderColor="Gray"
-                       BackgroundColor="#1A1A2E" />
-                <Button Grid.Column="1"
-                        Text="→"
-                        Command="{Binding SubmitActionCommand}"
-                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InvertBoolConverter}}"
-                        BackgroundColor="#E74C3C"
-                        TextColor="White"
-                        WidthRequest="48" />
-            </Grid>
+            <!-- Row 4: Command Input Bar -->
+            <Frame Grid.Row="4"
+                   BackgroundColor="{StaticResource PageBg}"
+                   BorderColor="{StaticResource BorderSubtle}"
+                   CornerRadius="0"
+                   Padding="12,10"
+                   HasShadow="False">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <!-- ">" prompt character -->
+                    <Label Grid.Column="0"
+                           Text="›"
+                           TextColor="{StaticResource Gold}"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           VerticalOptions="Center" />
+                    <Entry Grid.Column="1"
+                           Placeholder="What do you do?"
+                           Text="{Binding PlayerInput}"
+                           ReturnCommand="{Binding SubmitActionCommand}"
+                           IsEnabled="{Binding IsProcessing, Converter={StaticResource InvertBoolConverter}}"
+                           TextColor="{StaticResource TextPrimary}"
+                           PlaceholderColor="{StaticResource TextDim}"
+                           BackgroundColor="Transparent"
+                           FontSize="14" />
+                    <Button Grid.Column="2"
+                            Text="⏎"
+                            Command="{Binding SubmitActionCommand}"
+                            IsEnabled="{Binding IsProcessing, Converter={StaticResource InvertBoolConverter}}"
+                            Style="{StaticResource SendButtonStyle}"
+                            WidthRequest="44"
+                            HeightRequest="36" />
+                </Grid>
+            </Frame>
         </Grid>
 
         <!-- ═══════════════════════════════════════════════ -->
-        <!-- RIGHT: Agent Events Panel                       -->
+        <!-- RIGHT: Agent Events Panel (Scrying Mirror)      -->
         <!-- ═══════════════════════════════════════════════ -->
         <Grid Grid.Column="1"
               x:Name="EventsPanel"
               RowDefinitions="Auto,*"
-              BackgroundColor="#0D0D1A"
-              Padding="8">
+              BackgroundColor="{StaticResource EventsBg}">
 
             <!-- Panel Header -->
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
-                <Label Grid.Column="0" Text="Agent Events" FontAttributes="Bold"
-                       TextColor="Silver" FontSize="13" VerticalOptions="Center" />
-                <Button Grid.Column="1" Text="Clear"
-                        Command="{Binding ClearEventsCommand}"
-                        FontSize="11" Padding="8,4" BackgroundColor="Transparent" TextColor="Gray" />
-                <Button Grid.Column="2" Text="◀"
-                        Command="{Binding ToggleVisibilityCommand}"
-                        FontSize="11" Padding="8,4" BackgroundColor="Transparent" TextColor="Gray" />
-            </Grid>
+            <Frame Grid.Row="0"
+                   BackgroundColor="{StaticResource PageBg}"
+                   BorderColor="{StaticResource BorderSubtle}"
+                   CornerRadius="0"
+                   Padding="10,8"
+                   HasShadow="False">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="4">
+                    <Label Grid.Column="0" Text="🔮" FontSize="13" VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="OBSERVER"
+                           Style="{StaticResource SectionHeaderStyle}"
+                           FontSize="10"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="2"
+                            Text="Clear"
+                            Style="{StaticResource GhostButtonStyle}"
+                            FontSize="10"
+                            Command="{Binding ClearEventsCommand}" />
+                    <Button Grid.Column="3"
+                            Text="◀"
+                            Style="{StaticResource GhostButtonStyle}"
+                            FontSize="10"
+                            Command="{Binding ToggleVisibilityCommand}" />
+                </Grid>
+            </Frame>
 
             <!-- Events List -->
             <CollectionView Grid.Row="1"
                             ItemsSource="{Binding Events}"
-                            SelectionMode="None">
+                            SelectionMode="None"
+                            BackgroundColor="{StaticResource EventsBg}">
+                <CollectionView.Header>
+                    <BoxView HeightRequest="6" Color="Transparent" />
+                </CollectionView.Header>
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:AgentEventViewModel">
-                        <Grid ColumnDefinitions="Auto,*" Padding="4,2" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="{Binding Icon}" FontSize="12" VerticalOptions="Start" />
-                            <StackLayout Grid.Column="1" Spacing="1">
-                                <Grid ColumnDefinitions="*,Auto">
+                        <StackLayout Padding="6,2">
+                            <Frame BackgroundColor="{StaticResource CardBg}"
+                                   BorderColor="{StaticResource BorderSubtle}"
+                                   CornerRadius="4"
+                                   Padding="8,6"
+                                   HasShadow="False">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
                                     <Label Grid.Column="0"
-                                           Text="{Binding AgentName}"
-                                           FontSize="10"
-                                           FontAttributes="Bold"
-                                           TextColor="{Binding Color}" />
-                                    <Label Grid.Column="1"
-                                           Text="{Binding TimeStamp}"
-                                           FontSize="9"
-                                           TextColor="Gray" />
+                                           Text="{Binding Icon}"
+                                           FontSize="12"
+                                           VerticalOptions="Start" />
+                                    <StackLayout Grid.Column="1" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Grid.Column="0"
+                                                   Text="{Binding AgentName}"
+                                                   FontSize="10"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{Binding Color}" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding TimeStamp}"
+                                                   FontSize="9"
+                                                   TextColor="{StaticResource TextDim}" />
+                                        </Grid>
+                                        <Label Text="{Binding Title}"
+                                               FontSize="11"
+                                               TextColor="{StaticResource TextPrimary}" />
+                                        <Label Text="{Binding Detail}"
+                                               FontSize="10"
+                                               TextColor="{StaticResource TextMuted}"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="2"
+                                               IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
+                                    </StackLayout>
                                 </Grid>
-                                <Label Text="{Binding Title}" FontSize="11" TextColor="Silver" />
-                                <Label Text="{Binding Detail}"
-                                       FontSize="10"
-                                       TextColor="Gray"
-                                       LineBreakMode="TailTruncation"
-                                       MaxLines="2"
-                                       IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
-                            </StackLayout>
-                        </Grid>
+                            </Frame>
+                        </StackLayout>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
@@ -139,3 +222,5 @@
 
     </Grid>
 </ContentPage>
+
+
