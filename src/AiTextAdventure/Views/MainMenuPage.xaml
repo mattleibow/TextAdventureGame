@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AiTextAdventure.ViewModels"
+             x:Class="AiTextAdventure.Views.MainMenuPage"
+             x:DataType="vm:MainMenuViewModel"
+             Title="Adventure Awaits">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="24">
+
+        <!-- Header -->
+        <StackLayout Grid.Row="0" Spacing="8" Margin="0,0,0,24">
+            <Label Text="AI Text Adventure"
+                   FontSize="36"
+                   FontAttributes="Bold"
+                   HorizontalTextAlignment="Center" />
+            <Label Text="An AI-Powered Story Experience"
+                   FontSize="16"
+                   HorizontalTextAlignment="Center"
+                   TextColor="Gray" />
+        </StackLayout>
+
+        <!-- Save Slots -->
+        <ScrollView Grid.Row="1">
+            <StackLayout Spacing="12">
+
+                <!-- New Game Entry -->
+                <Frame BorderColor="DarkGreen" CornerRadius="8" Padding="16">
+                    <StackLayout Spacing="8">
+                        <Label Text="New Adventure" FontAttributes="Bold" FontSize="18" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Entry Grid.Column="0"
+                                   Placeholder="Enter adventure name..."
+                                   Text="{Binding NewGameName}"
+                                   ReturnCommand="{Binding NewGameCommand}" />
+                            <Button Grid.Column="1"
+                                    Text="Start"
+                                    Command="{Binding NewGameCommand}"
+                                    BackgroundColor="DarkGreen"
+                                    TextColor="White" />
+                        </Grid>
+                    </StackLayout>
+                </Frame>
+
+                <!-- Existing Save Slots -->
+                <Label Text="Continue Adventure"
+                       FontAttributes="Bold"
+                       FontSize="18"
+                       IsVisible="{Binding SaveSlots.Count, Converter={StaticResource GreaterThanZeroConverter}}" />
+
+                <CollectionView ItemsSource="{Binding SaveSlots}" SelectionMode="None">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="x:Object">
+                            <Frame BorderColor="Gray" CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <StackLayout Grid.Column="0">
+                                        <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="16" />
+                                        <Label Text="{Binding LastPlayedAt, StringFormat='Last played: {0:MMM d, yyyy}'}"
+                                               TextColor="Gray" FontSize="12" />
+                                    </StackLayout>
+                                    <Button Grid.Column="1"
+                                            Text="Play"
+                                            BackgroundColor="DarkBlue"
+                                            TextColor="White"
+                                            Clicked="OnPlaySlotClicked"
+                                            CommandParameter="{Binding .}" />
+                                    <Button Grid.Column="2"
+                                            Text="Delete"
+                                            BackgroundColor="DarkRed"
+                                            TextColor="White"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainMenuViewModel}}, Path=DeleteSlotCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </Grid>
+                            </Frame>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />
+            </StackLayout>
+        </ScrollView>
+
+    </Grid>
+</ContentPage>

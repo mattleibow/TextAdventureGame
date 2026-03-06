@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:AiTextAdventure.ViewModels"
+             x:Class="AiTextAdventure.Views.InventoryPage"
+             x:DataType="vm:InventoryViewModel"
+             Title="Inventory">
+
+    <Grid RowDefinitions="Auto,*" Padding="16">
+
+        <Label Grid.Row="0" Text="Your Items" FontSize="24" FontAttributes="Bold" Margin="0,0,0,16" />
+
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}">
+            <CollectionView.EmptyView>
+                <Label Text="Your pockets are empty." HorizontalTextAlignment="Center"
+                       TextColor="Gray" Margin="0,32" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="x:Object">
+                    <Frame BorderColor="Gray" CornerRadius="8" Padding="12" Margin="0,4">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Grid.Column="0" Text="🎒" FontSize="24" VerticalOptions="Center" Margin="0,0,12,0" />
+                            <StackLayout Grid.Column="1">
+                                <Label Text="{Binding ItemName}" FontAttributes="Bold" FontSize="16" />
+                                <Label Text="{Binding Description}" TextColor="Gray" FontSize="13" />
+                                <Label Text="{Binding Quantity, StringFormat='Quantity: {0}'}"
+                                       TextColor="Silver" FontSize="12" />
+                            </StackLayout>
+                        </Grid>
+                    </Frame>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+    </Grid>
+</ContentPage>
