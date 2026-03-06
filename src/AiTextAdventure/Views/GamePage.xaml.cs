@@ -29,4 +29,11 @@ public partial class GamePage : ContentPage
         // Right panel: agent events (separate BindingContext on the named Grid)
         EventsPanel.BindingContext = eventsViewModel;
     }
+
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+        // Kick off the opening narrative once the SaveSlotId query property has been set
+        await _gameViewModel.InitializeAsync();
+    }
 }

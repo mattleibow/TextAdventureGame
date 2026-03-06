@@ -47,6 +47,8 @@ public partial class MainMenuViewModel(ISaveSlotService saveSlotService) : Obser
             SaveSlots.Insert(0, slot);
             SelectedSlot = slot;
             NewGameName = "";
+            // Navigate directly into the game after creating the slot
+            await Shell.Current.GoToAsync($"game?saveSlotId={slot.Id}");
         }
         finally
         {

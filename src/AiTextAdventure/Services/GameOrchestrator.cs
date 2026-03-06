@@ -20,6 +20,32 @@ public class GameOrchestrator(
     IDocumentStore store,
     IEventStream eventStream) : IGameOrchestrator
 {
+    public async Task<GameTurnResult> InitializeGameAsync(
+        Guid saveSlotId,
+        CancellationToken cancellationToken = default)
+    {
+        // Create default WorldState if this is a brand-new game
+        var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
+        if (worldState is null)
+        {
+            worldState = new WorldState
+            {
+                Id = Guid.NewGuid(),
+                SaveSlotId = saveSlotId,
+                CurrentBiome = "forest",
+                CurrentLocation = "Whispering Glade",
+                TimeOfDay = "morning",
+                RegionDescription = "A peaceful forest clearing at the edge of an ancient wood.",
+                KnownEntities = ["Old Oak Tree", "Mossy Stone", "A hooded stranger"],
+                RecentEvents = ["You awoke here with no memory of how you arrived."]
+            };
+            await worldStateService.SaveState(worldState, cancellationToken);
+        }
+
+        // Use the AI workflow to generate the opening narrative, same as a normal turn
+        return await ProcessTurnAsync(saveSlotId, "look around", cancellationToken);
+    }
+
     public async Task<GameTurnResult> ProcessTurnAsync(
         Guid saveSlotId,
         string playerInput,
