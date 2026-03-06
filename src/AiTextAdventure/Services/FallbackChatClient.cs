@@ -80,6 +80,7 @@ public class FallbackChatClient(ILogger<FallbackChatClient> logger) : IChatClien
         {
             "worldgen" => GenerateWorldState(userMessage, callIndex),
             "suggestion" => GenerateSuggestions(userMessage, callIndex),
+            "resolver" => GenerateActionResult(userMessage, callIndex),
             _ => GenerateNarrative(userMessage, callIndex)  // narrator or unknown
         };
     }
@@ -91,6 +92,8 @@ public class FallbackChatClient(ILogger<FallbackChatClient> logger) : IChatClien
             return "worldgen";
         if (lower.Contains("suggestion") || lower.Contains("action suggestions") || lower.Contains("json array"))
             return "suggestion";
+        if (lower.Contains("itemspickedup") || lower.Contains("entitiespickedup") || lower.Contains("locationchanged") || lower.Contains("entitiesremoved"))
+            return "resolver";
         return "narrator";
     }
 
@@ -144,5 +147,54 @@ public class FallbackChatClient(ILogger<FallbackChatClient> logger) : IChatClien
         };
 
         return JsonSerializer.Serialize(new { Actions = suggestions });
+    }
+
+    private static string GenerateActionResult(string context, int callIndex)
+    {
+        // Parse the context to determine what happened
+        var lower = context.ToLowerInvariant();
+
+        // Detect pickup actions
+        var isPickup = lower.Contains("pick up") || lower.Contains("grab") || lower.Contains("take");
+        var isDrop = lower.Contains("drop") || lower.Contains("put down");
+
+        // Extract the entity from "Entities: X, Y, Z. Action: pick up X."
+        string? pickedUpItem = null;
+        if (isPickup)
+        {
+            // Try to match entity names from the entities list
+            var entitiesMatch = System.Text.RegularExpressions.Regex.Match(context, @"Entities:\s*([^.]+)\.");
+            if (entitiesMatch.Success)
+            {
+                var entitiesStr = entitiesMatch.Groups[1].Value;
+                var entities = entitiesStr.Split(',').Select(e => e.Trim()).ToList();
+                foreach (var entity in entities)
+                {
+                    if (!string.IsNullOrEmpty(entity) && lower.Contains(entity.ToLowerInvariant()))
+                    {
+                        pickedUpItem = entity;
+                        break;
+                    }
+                }
+                // Fallback: just take first entity if player said "pick up" generically
+                if (pickedUpItem is null && entities.Count > 0)
+                    pickedUpItem = entities[0];
+            }
+        }
+
+        if (pickedUpItem is not null)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                ItemsPickedUp = new[] { new { ItemName = pickedUpItem, Description = $"A {pickedUpItem} found in the area." } },
+                ItemsDropped = Array.Empty<string>(),
+                LocationChanged = (string?)null,
+                EntitiesRemoved = new[] { pickedUpItem },
+                NewEntities = Array.Empty<string>()
+            });
+        }
+
+        // No state change
+        return """{"ItemsPickedUp":[],"ItemsDropped":[],"LocationChanged":null,"EntitiesRemoved":[],"NewEntities":[]}""";
     }
 }

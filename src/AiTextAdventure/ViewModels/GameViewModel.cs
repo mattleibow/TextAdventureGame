@@ -75,6 +75,12 @@ public partial class GameViewModel(
     }
 
     [RelayCommand]
+    private static async Task GoToMenu()
+    {
+        await Shell.Current.GoToAsync("..");
+    }
+
+    [RelayCommand]
     private async Task SubmitAction(string? actionText = null)
     {
         var input = actionText ?? PlayerInput;
