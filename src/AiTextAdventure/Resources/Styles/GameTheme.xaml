@@ -60,6 +60,7 @@
     <conv:InvertBoolConverter x:Key="InvertBoolConverter" />
     <conv:NotNullConverter x:Key="NotNullConverter" />
     <conv:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter" />
+    <conv:BoolToColorConverter x:Key="BoolToColorConverter" />
 
     <!-- ══════════════════════════════════════════ -->
     <!--  GLOBAL PAGE STYLE                         -->

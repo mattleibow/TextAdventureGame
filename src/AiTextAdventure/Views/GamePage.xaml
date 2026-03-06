@@ -153,19 +153,22 @@
                             Style="{StaticResource GhostButtonStyle}"
                             FontSize="16" Padding="0"
                             Command="{Binding SelectStatusCommand}"
-                            TextColor="{Binding IsStatusTab, Converter={StaticResource InvertBoolConverter}, ConverterParameter=Gold}" />
+                            TextColor="{Binding IsStatusTab, Converter={StaticResource BoolToColorConverter}}" />
                     <Button Grid.Column="1" Text="🎒"
                             Style="{StaticResource GhostButtonStyle}"
                             FontSize="16" Padding="0"
-                            Command="{Binding SelectPocketsCommand}" />
+                            Command="{Binding SelectPocketsCommand}"
+                            TextColor="{Binding IsPocketsTab, Converter={StaticResource BoolToColorConverter}}" />
                     <Button Grid.Column="2" Text="📜"
                             Style="{StaticResource GhostButtonStyle}"
                             FontSize="16" Padding="0"
-                            Command="{Binding SelectJournalCommand}" />
+                            Command="{Binding SelectJournalCommand}"
+                            TextColor="{Binding IsJournalTab, Converter={StaticResource BoolToColorConverter}}" />
                     <Button Grid.Column="3" Text="🔮"
                             Style="{StaticResource GhostButtonStyle}"
                             FontSize="16" Padding="0"
-                            Command="{Binding SelectEventsCommand}" />
+                            Command="{Binding SelectEventsCommand}"
+                            TextColor="{Binding IsEventsTab, Converter={StaticResource BoolToColorConverter}}" />
                 </Grid>
             </Frame>
 
