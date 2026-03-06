@@ -79,6 +79,7 @@ public class FallbackChatClient(ILogger<FallbackChatClient> logger) : IChatClien
         return promptType switch
         {
             "worldgen" => GenerateWorldState(userMessage, callIndex),
+            "tilegen" => GenerateTile(userMessage, callIndex),
             "suggestion" => GenerateSuggestions(userMessage, callIndex),
             "resolver" => GenerateActionResult(userMessage, callIndex),
             _ => GenerateNarrative(userMessage, callIndex)  // narrator or unknown
@@ -88,6 +89,8 @@ public class FallbackChatClient(ILogger<FallbackChatClient> logger) : IChatClien
     private static string ClassifySystemPrompt(string systemPrompt)
     {
         var lower = systemPrompt.ToLowerInvariant();
+        if (lower.Contains("hiddenitems") || lower.Contains("locationname") || lower.Contains("atmosphere"))
+            return "tilegen";
         if (lower.Contains("worldgen") || lower.Contains("world state") || lower.Contains("currentbiome"))
             return "worldgen";
         if (lower.Contains("suggestion") || lower.Contains("action suggestions") || lower.Contains("json array"))
@@ -95,6 +98,34 @@ public class FallbackChatClient(ILogger<FallbackChatClient> logger) : IChatClien
         if (lower.Contains("itemspickedup") || lower.Contains("entitiespickedup") || lower.Contains("locationchanged") || lower.Contains("entitiesremoved"))
             return "resolver";
         return "narrator";
+    }
+
+    private static string GenerateTile(string userMessage, int callIndex)
+    {
+        // Detect biome hint from the user message (adjacent biomes given in prompt)
+        var lower = userMessage.ToLowerInvariant();
+        var biome = lower.Contains("mountain") ? "mountain"
+                  : lower.Contains("desert") ? "desert"
+                  : lower.Contains("plains") ? "plains"
+                  : lower.Contains("swamp") ? "swamp"
+                  : lower.Contains("cave") ? "cave"
+                  : lower.Contains("ocean") ? "ocean"
+                  : lower.Contains("ruins") ? "ruins"
+                  : lower.Contains("hills") ? "hills"
+                  : "forest";
+
+        return biome switch
+        {
+            "mountain" => """{"Biome":"mountain","LocationName":"Granite Peak","Description":"Jagged stone spires pierce the low clouds, and the wind howls through narrow crevices.","Atmosphere":"bitter cold, howling wind","Features":["sheer granite cliff face"],"HiddenItems":["alpine healing herb","frozen strip of venison","stone-tipped climbing axe","wolf-pelt cloak","mountain adder"]}""",
+            "desert" => """{"Biome":"desert","LocationName":"Scorched Flats","Description":"Cracked earth stretches to a shimmering horizon under a merciless sun.","Atmosphere":"searing heat, blinding glare","Features":["bleached bone arch"],"HiddenItems":["shimmering healing tonic","salted camel jerky","rusted iron scimitar","sun-bleached bone shield","desert horned viper"]}""",
+            "plains" => """{"Biome":"plains","LocationName":"Golden Meadow","Description":"Tall grass ripples in the breeze, dotted with wildflowers and scattered stones.","Atmosphere":"warm breeze, rustling grass","Features":["weathered standing stone"],"HiddenItems":["wildflower healing poultice","dried prairie jerky","iron-banded short sword","woven grass cloak","plains cottonmouth snake"]}""",
+            "swamp" => """{"Biome":"swamp","LocationName":"Murkmire Hollow","Description":"Gnarled roots twist from black water, and bioluminescent fungi cling to rotting trunks.","Atmosphere":"damp, fetid, eerily glowing","Features":["half-submerged willow giant"],"HiddenItems":["glowing healing mushroom","pickled marsh eel","iron-spiked war club","reed-woven buckler","venomous swamp moccasin"]}""",
+            "cave" => """{"Biome":"cave","LocationName":"Echoing Grotto","Description":"Stalactites hang like stone teeth from a vaulted ceiling; phosphorescent moss lights the dark.","Atmosphere":"cool, dripping, luminescent","Features":["massive stalagmite column"],"HiddenItems":["glowing healing mushroom","dried cave moss cake","iron-spiked war club","iron-banded buckler","venomous cave spider"]}""",
+            "ocean" => """{"Biome":"ocean","LocationName":"Saltwind Shore","Description":"Waves crash against black rocks and sea-mist rolls in with the smell of brine and kelp.","Atmosphere":"salt air, rhythmic waves, grey light","Features":["towering sea-stack rock"],"HiddenItems":["seaweed healing salve","dried salted fish","barnacle-crusted cutlass","crab-shell pauldron","stonefish trap"]}""",
+            "ruins" => """{"Biome":"ruins","LocationName":"Crumbled Citadel","Description":"Moss-covered stone walls rise in shattered arches over broken flagstones and ancient carvings.","Atmosphere":"silent, ancient, haunted","Features":["fallen stone colossus"],"HiddenItems":["alchemist's healing vial","ancient dried provisions","corroded iron longsword","cracked stone shield","rusted bear trap"]}""",
+            "hills" => """{"Biome":"hills","LocationName":"Rolling Crests","Description":"Rounded hills rise and fall like frozen waves, their slopes dotted with heather and limestone outcrops.","Atmosphere":"open sky, whistling wind","Features":["limestone outcrop cairn"],"HiddenItems":["herb healer's salve","smoked rabbit haunch","flint-knapped hunting knife","hardened leather vest","hill rattlesnake"]}""",
+            _ => """{"Biome":"forest","LocationName":"Whispering Glade","Description":"Ancient oaks interlock their branches overhead, filtering the pale morning light into shifting pools.","Atmosphere":"misty, birdsong, cool air","Features":["mossy stone altar"],"HiddenItems":["luminescent healing berry","dried mushroom rations","carved bone hunting knife","bark-woven leather bracers","venomous forest asp"]}""",
+        };
     }
 
     private string GenerateWorldState(string gameName, int callIndex)

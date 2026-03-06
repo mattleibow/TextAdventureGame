@@ -163,7 +163,7 @@
                    CornerRadius="0"
                    Padding="4,6"
                    HasShadow="False">
-                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="2">
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="2">
                     <Button Grid.Column="0" Text="📍"
                             Style="{StaticResource GhostButtonStyle}"
                             FontSize="16" Padding="0"
@@ -179,7 +179,12 @@
                             FontSize="16" Padding="0"
                             Command="{Binding SelectJournalCommand}"
                             TextColor="{Binding IsJournalTab, Converter={StaticResource BoolToColorConverter}}" />
-                    <Button Grid.Column="3" Text="🔮"
+                    <Button Grid.Column="3" Text="🗺️"
+                            Style="{StaticResource GhostButtonStyle}"
+                            FontSize="16" Padding="0"
+                            Command="{Binding SelectMapCommand}"
+                            TextColor="{Binding IsMapTab, Converter={StaticResource BoolToColorConverter}}" />
+                    <Button Grid.Column="4" Text="🔮"
                             Style="{StaticResource GhostButtonStyle}"
                             FontSize="16" Padding="0"
                             Command="{Binding SelectEventsCommand}"
@@ -380,6 +385,20 @@
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
+                </Grid>
+
+                <!-- ── MAP TAB ── -->
+                <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsMapTab}" Padding="10,8">
+                    <Label Grid.Row="0" Text="🗺️ WORLD MAP" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
+                    <Label Grid.Row="1"
+                           Text="{Binding CoordinatesDisplay}"
+                           TextColor="{StaticResource TextMuted}"
+                           FontSize="10"
+                           Margin="0,2,0,4" />
+                    <GraphicsView Grid.Row="2"
+                                  Drawable="{Binding MapDrawable}"
+                                  HeightRequest="300"
+                                  BackgroundColor="#1a1a2e" />
                 </Grid>
 
                 <!-- ── EVENTS TAB ── -->

@@ -3,60 +3,65 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AiTextAdventure.Models.Documents;
 using AiTextAdventure.Services;
+using AiTextAdventure.Views;
 
 namespace AiTextAdventure.ViewModels;
 
 /// <summary>
 /// ViewModel for the right-side tabbed sidebar.
-/// Tabs: Status | Pockets | Journal | Events
-/// Call RefreshAsync after each game turn to update Status, Pockets, and Journal.
+/// Tabs: Status(0) | Pockets(1) | Journal(2) | Map(3) | Events(4)
+/// Call RefreshAsync after each game turn to update data.
 /// </summary>
 public partial class SidebarViewModel(
     WorldStateService worldStateService,
+    MapService mapService,
     EventsPanelViewModel eventsPanel) : ObservableObject
 {
     public EventsPanelViewModel EventsPanel { get; } = eventsPanel;
 
-    // Direct exposures to avoid deep-path compiled binding issues (EventsPanel.Events fails)
-    public System.Collections.ObjectModel.ObservableCollection<AgentEventViewModel> AgentEvents => EventsPanel.Events;
+    // Direct exposures to avoid deep-path compiled binding issues
+    public ObservableCollection<AgentEventViewModel> AgentEvents => EventsPanel.Events;
     public System.Windows.Input.ICommand ClearAgentEventsCommand => EventsPanel.ClearEventsCommand;
 
     // ── Tab selection ────────────────────────────────────────
     [ObservableProperty]
-    private int selectedTab = 0; // 0=Status 1=Pockets 2=Journal 3=Events
+    private int selectedTab = 0; // 0=Status 1=Pockets 2=Journal 3=Map 4=Events
 
-    public bool IsStatusTab => SelectedTab == 0;
+    public bool IsStatusTab  => SelectedTab == 0;
     public bool IsPocketsTab => SelectedTab == 1;
     public bool IsJournalTab => SelectedTab == 2;
-    public bool IsEventsTab => SelectedTab == 3;
+    public bool IsMapTab     => SelectedTab == 3;
+    public bool IsEventsTab  => SelectedTab == 4;
 
     partial void OnSelectedTabChanged(int value)
     {
         OnPropertyChanged(nameof(IsStatusTab));
         OnPropertyChanged(nameof(IsPocketsTab));
         OnPropertyChanged(nameof(IsJournalTab));
+        OnPropertyChanged(nameof(IsMapTab));
         OnPropertyChanged(nameof(IsEventsTab));
     }
 
-    [RelayCommand] private void SelectStatus() => SelectedTab = 0;
+    [RelayCommand] private void SelectStatus()  => SelectedTab = 0;
     [RelayCommand] private void SelectPockets() => SelectedTab = 1;
     [RelayCommand] private void SelectJournal() => SelectedTab = 2;
-    [RelayCommand] private void SelectEvents() => SelectedTab = 3;
+    [RelayCommand] private void SelectMap()     => SelectedTab = 3;
+    [RelayCommand] private void SelectEvents()  => SelectedTab = 4;
 
     // ── Status tab — world ───────────────────────────────────
     [ObservableProperty] private string currentLocation = "—";
     [ObservableProperty] private string currentBiome = "—";
     [ObservableProperty] private string timeOfDay = "—";
     [ObservableProperty] private string regionDescription = "";
-    public ObservableCollection<string> NearbyEntities { get; } = [];
-    public ObservableCollection<string> AvailableExits { get; } = [];
+    public ObservableCollection<string> NearbyEntities  { get; } = [];
+    public ObservableCollection<string> AvailableExits  { get; } = [];
 
-    public bool HasExits => AvailableExits.Count > 0;
-    public bool HasHidden => _hiddenCount > 0;
+    public bool HasExits  => AvailableExits.Count > 0;
+    public bool HasHidden => HiddenCount > 0;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasHidden))]
-    private int _hiddenCount = 0;
+    private int hiddenCount = 0;
 
     // ── Status tab — player stats ────────────────────────────
     [ObservableProperty]
@@ -87,9 +92,9 @@ public partial class SidebarViewModel(
     [NotifyPropertyChangedFor(nameof(GearDisplay))]
     private string? equippedArmor;
 
-    public string HealthBar => BuildBar(Health, MaxHealth);
-    public string HungerBar => BuildBar(Hunger, 100);
-    public string EnergyBar => BuildBar(100 - Tiredness, 100);
+    public string HealthBar    => BuildBar(Health, MaxHealth);
+    public string HungerBar    => BuildBar(Hunger, 100);
+    public string EnergyBar    => BuildBar(100 - Tiredness, 100);
     public string HealthDisplay => $"{Health}/{MaxHealth}";
     public string HungerDisplay => $"{Hunger}/100";
     public string EnergyDisplay => $"{100 - Tiredness}/100";
@@ -98,9 +103,9 @@ public partial class SidebarViewModel(
         get
         {
             var parts = new List<string>();
-            if (Armor > 0) parts.Add($"🛡️ {Armor} DEF");
+            if (Armor > 0)                          parts.Add($"🛡️ {Armor} DEF");
             if (!string.IsNullOrEmpty(EquippedWeapon)) parts.Add($"⚔️ {EquippedWeapon}");
-            if (!string.IsNullOrEmpty(EquippedArmor)) parts.Add($"🥋 {EquippedArmor}");
+            if (!string.IsNullOrEmpty(EquippedArmor))  parts.Add($"🥋 {EquippedArmor}");
             return parts.Count > 0 ? string.Join("  ", parts) : "No gear equipped";
         }
     }
@@ -118,6 +123,11 @@ public partial class SidebarViewModel(
     // ── Journal tab ──────────────────────────────────────────
     public ObservableCollection<JournalEntry> JournalEntries { get; } = [];
 
+    // ── Map tab ──────────────────────────────────────────────
+    public MapDrawable MapDrawable { get; } = new();
+
+    [ObservableProperty] private string coordinatesDisplay = "(0,0)";
+
     // ── Refresh ──────────────────────────────────────────────
     public async Task RefreshAsync(Guid saveSlotId, CancellationToken cancellationToken = default)
     {
@@ -129,10 +139,14 @@ public partial class SidebarViewModel(
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     CurrentLocation = worldState.CurrentLocation;
-                    CurrentBiome = worldState.CurrentBiome;
-                    TimeOfDay = worldState.TimeOfDay;
+                    CurrentBiome    = worldState.CurrentBiome;
+                    TimeOfDay       = worldState.TimeOfDay;
                     RegionDescription = worldState.RegionDescription;
-                    _hiddenCount = worldState.HiddenEntities?.Count ?? 0;
+                    HiddenCount = worldState.HiddenEntities?.Count ?? 0;
+
+                    CoordinatesDisplay = $"({worldState.PlayerX},{worldState.PlayerY})";
+                    MapDrawable.PlayerX = worldState.PlayerX;
+                    MapDrawable.PlayerY = worldState.PlayerY;
 
                     NearbyEntities.Clear();
                     foreach (var e in worldState.KnownEntities ?? [])
@@ -152,13 +166,13 @@ public partial class SidebarViewModel(
             {
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    Health = playerStats.Health;
-                    MaxHealth = playerStats.MaxHealth;
-                    Hunger = playerStats.Hunger;
-                    Tiredness = playerStats.Tiredness;
-                    Armor = playerStats.Armor;
-                    EquippedWeapon = playerStats.EquippedWeapon;
-                    EquippedArmor = playerStats.EquippedArmor;
+                    Health          = playerStats.Health;
+                    MaxHealth       = playerStats.MaxHealth;
+                    Hunger          = playerStats.Hunger;
+                    Tiredness       = playerStats.Tiredness;
+                    Armor           = playerStats.Armor;
+                    EquippedWeapon  = playerStats.EquippedWeapon;
+                    EquippedArmor   = playerStats.EquippedArmor;
                 });
             }
 
@@ -176,6 +190,14 @@ public partial class SidebarViewModel(
                 JournalEntries.Clear();
                 foreach (var entry in journal.Take(10))
                     JournalEntries.Add(entry);
+            });
+
+            // Refresh map tiles
+            var tiles = await mapService.GetAllTiles(saveSlotId, cancellationToken);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                MapDrawable.Tiles = tiles;
+                OnPropertyChanged(nameof(MapDrawable));
             });
         }
         catch

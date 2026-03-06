@@ -16,6 +16,11 @@ public class ActionResult
     public List<string> EntitiesRemoved { get; set; } = [];
     /// <summary>New entity names to add to WorldState.KnownEntities (e.g. after discovering something).</summary>
     public List<string> NewEntities { get; set; } = [];
+    /// <summary>
+    /// Movement direction detected from player input.
+    /// Values: "north","south","east","west","northeast","northwest","southeast","southwest" or null.
+    /// </summary>
+    public string? MovementDirection { get; set; }
 }
 
 public class PickedUpItem

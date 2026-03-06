@@ -13,6 +13,7 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(JournalEntry))]
 [JsonSerializable(typeof(GameLocation))]
 [JsonSerializable(typeof(PlayerStats))]
+[JsonSerializable(typeof(MapTile))]
 [JsonSerializable(typeof(PlayerAction))]
 [JsonSerializable(typeof(WorldGenResult))]
 [JsonSerializable(typeof(NpcDialogResult))]
@@ -33,5 +34,6 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(List<JournalEntry>))]
 [JsonSerializable(typeof(List<GameLocation>))]
 [JsonSerializable(typeof(List<PlayerStats>))]
+[JsonSerializable(typeof(List<MapTile>))]
 [JsonSerializable(typeof(List<SuggestedAction>))]
 public partial class GameJsonContext : JsonSerializerContext;

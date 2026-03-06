@@ -72,6 +72,7 @@ public static class MauiProgram
         // -- Services --
         services.AddSingleton<WorldStateService>();
         services.AddSingleton<SaveSlotService>();
+        services.AddSingleton<MapService>();
         services.AddSingleton<GameOrchestrator>();
         // AgentFactory and GameWorkflowFactory retained for future multi-agent workflow use
         services.AddSingleton<AgentFactory>();
