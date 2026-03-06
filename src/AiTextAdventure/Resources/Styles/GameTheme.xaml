@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                    xmlns:conv="clr-namespace:AiTextAdventure.Converters">
 
     <!-- Game color palette -->
     <Color x:Key="GameBackground">#0A0A1A</Color>
@@ -12,7 +13,10 @@
     <Color x:Key="AccentBlue">#2980B9</Color>
     <Color x:Key="SubtleGray">#666688</Color>
 
-    <!-- Value Converters (registered in code) -->
+    <!-- Value Converters -->
+    <conv:InvertBoolConverter x:Key="InvertBoolConverter" />
+    <conv:NotNullConverter x:Key="NotNullConverter" />
+    <conv:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter" />
 
     <!-- Base button style for action suggestions -->
     <Style x:Key="SuggestionButtonStyle" TargetType="Button">
