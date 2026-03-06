@@ -193,11 +193,12 @@
 
                 <!-- ── STATUS TAB ── -->
                 <ScrollView IsVisible="{Binding IsStatusTab}">
-                    <StackLayout Padding="10,8" Spacing="8">
+                    <StackLayout Padding="10,8" Spacing="6">
                         <Label Text="📍 STATUS" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
                         <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
 
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                        <!-- Location / Biome / Time -->
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
                             <Label Grid.Row="0" Grid.Column="0" Text="Location" Style="{StaticResource MutedLabelStyle}" FontSize="10" />
                             <Label Grid.Row="0" Grid.Column="1" Text="{Binding CurrentLocation}" TextColor="{StaticResource GoldText}" FontSize="12" FontAttributes="Bold" />
 
@@ -208,21 +209,87 @@
                             <Label Grid.Row="2" Grid.Column="1" Text="{Binding TimeOfDay}" TextColor="{StaticResource TealText}" FontSize="12" />
                         </Grid>
 
+                        <!-- Adventurer Stats -->
+                        <Label Text="ADVENTURER" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,6,0,2" />
+                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
+
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                            <!-- Health -->
+                            <Label Grid.Row="0" Grid.Column="0" Text="❤️" FontSize="13" VerticalOptions="Center" />
+                            <Label Grid.Row="0" Grid.Column="1" Text="{Binding HealthBar}"
+                                   FontSize="11" TextColor="{StaticResource GoldText}" VerticalOptions="Center" />
+                            <Label Grid.Row="0" Grid.Column="2" Text="{Binding HealthDisplay}"
+                                   Style="{StaticResource MutedLabelStyle}" FontSize="10" VerticalOptions="Center" />
+
+                            <!-- Hunger -->
+                            <Label Grid.Row="1" Grid.Column="0" Text="🍖" FontSize="13" VerticalOptions="Center" />
+                            <Label Grid.Row="1" Grid.Column="1" Text="{Binding HungerBar}"
+                                   FontSize="11" TextColor="{StaticResource TealText}" VerticalOptions="Center" />
+                            <Label Grid.Row="1" Grid.Column="2" Text="{Binding HungerDisplay}"
+                                   Style="{StaticResource MutedLabelStyle}" FontSize="10" VerticalOptions="Center" />
+
+                            <!-- Energy -->
+                            <Label Grid.Row="2" Grid.Column="0" Text="😴" FontSize="13" VerticalOptions="Center" />
+                            <Label Grid.Row="2" Grid.Column="1" Text="{Binding EnergyBar}"
+                                   FontSize="11" TextColor="{StaticResource TealText}" VerticalOptions="Center" />
+                            <Label Grid.Row="2" Grid.Column="2" Text="{Binding EnergyDisplay}"
+                                   Style="{StaticResource MutedLabelStyle}" FontSize="10" VerticalOptions="Center" />
+                        </Grid>
+
+                        <!-- Equipped gear -->
+                        <Label Text="{Binding GearDisplay}"
+                               Style="{StaticResource MutedLabelStyle}"
+                               FontSize="10"
+                               Margin="0,2,0,0" />
+
+                        <!-- Region description -->
                         <Label Text="{Binding RegionDescription}"
                                Style="{StaticResource MutedLabelStyle}"
                                FontSize="11"
                                LineBreakMode="WordWrap"
                                FontAttributes="Italic"
-                               Margin="0,4,0,0" />
+                               Margin="0,4,0,0"
+                               IsVisible="{Binding RegionDescription, Converter={StaticResource NotNullConverter}}" />
 
-                        <Label Text="NEARBY" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,8,0,2" />
-                        <CollectionView ItemsSource="{Binding NearbyEntities}" SelectionMode="None" HeightRequest="120">
+                        <!-- Hidden hint -->
+                        <Label IsVisible="{Binding HasHidden}"
+                               Text="🔍 Look around to discover hidden things..."
+                               TextColor="{StaticResource TealText}"
+                               FontSize="10"
+                               FontAttributes="Italic"
+                               Margin="0,2,0,0" />
+
+                        <!-- Nearby entities -->
+                        <Label Text="NEARBY" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,6,0,2" />
+                        <CollectionView ItemsSource="{Binding NearbyEntities}" SelectionMode="None" HeightRequest="150">
+                            <CollectionView.EmptyView>
+                                <Label Text="Nothing visible yet. Look around!"
+                                       Style="{StaticResource MutedLabelStyle}"
+                                       FontAttributes="Italic"
+                                       FontSize="10" />
+                            </CollectionView.EmptyView>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
                                     <Label Text="{Binding .}"
                                            TextColor="{StaticResource TextPrimary}"
                                            FontSize="12"
-                                           Padding="0,3" />
+                                           Padding="0,2" />
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <!-- Available exits -->
+                        <Label Text="EXITS" Style="{StaticResource SectionHeaderStyle}" FontSize="10"
+                               Margin="0,6,0,2" IsVisible="{Binding HasExits}" />
+                        <CollectionView ItemsSource="{Binding AvailableExits}" SelectionMode="None"
+                                        HeightRequest="80"
+                                        IsVisible="{Binding HasExits}">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Label Text="{Binding .}"
+                                           TextColor="{StaticResource TealText}"
+                                           FontSize="12"
+                                           Padding="0,2" />
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>
@@ -254,6 +321,10 @@
                                                    Style="{StaticResource MutedLabelStyle}"
                                                    FontSize="11"
                                                    LineBreakMode="WordWrap" />
+                                            <Label Text="{Binding EffectDisplay}"
+                                                   TextColor="{StaticResource TealText}"
+                                                   FontSize="10"
+                                                   IsVisible="{Binding EffectDisplay, Converter={StaticResource NotNullConverter}}" />
                                         </StackLayout>
                                         <Label Grid.Column="1"
                                                Text="{Binding Quantity}"

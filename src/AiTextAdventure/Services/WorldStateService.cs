@@ -33,6 +33,23 @@ public class WorldStateService(
         await store.Set(state.Id.ToString(), state, GameJsonContext.Default.WorldState, cancellationToken);
     }
 
+    public async Task<PlayerStats?> GetPlayerStats(Guid saveSlotId, CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("DB: Query PlayerStats for save {SaveSlotId}", saveSlotId);
+        var all = await store.GetAll<PlayerStats>(GameJsonContext.Default.PlayerStats, cancellationToken);
+        return all.FirstOrDefault(p => p.SaveSlotId == saveSlotId);
+    }
+
+    public async Task SavePlayerStats(PlayerStats stats, CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("DB: Save PlayerStats HP={Health}/{MaxHealth} Hunger={Hunger} Tired={Tired} for {SaveSlotId}",
+            stats.Health, stats.MaxHealth, stats.Hunger, stats.Tiredness, stats.SaveSlotId);
+        eventStream.Emit(new AgentEvent(
+            $"💾 Stats HP:{stats.Health} Hunger:{stats.Hunger} Energy:{100 - stats.Tiredness}",
+            "Database", AgentEventKind.ToolResult));
+        await store.Set(stats.Id.ToString(), stats, GameJsonContext.Default.PlayerStats, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<GameLocation>> GetDiscoveredLocations(Guid saveSlotId, CancellationToken cancellationToken = default)
     {
         var results = await store.Query<GameLocation>(

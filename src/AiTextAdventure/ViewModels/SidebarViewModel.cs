@@ -43,12 +43,74 @@ public partial class SidebarViewModel(
     [RelayCommand] private void SelectJournal() => SelectedTab = 2;
     [RelayCommand] private void SelectEvents() => SelectedTab = 3;
 
-    // ── Status tab ──────────────────────────────────────────
+    // ── Status tab — world ───────────────────────────────────
     [ObservableProperty] private string currentLocation = "—";
     [ObservableProperty] private string currentBiome = "—";
     [ObservableProperty] private string timeOfDay = "—";
     [ObservableProperty] private string regionDescription = "";
     public ObservableCollection<string> NearbyEntities { get; } = [];
+    public ObservableCollection<string> AvailableExits { get; } = [];
+
+    public bool HasExits => AvailableExits.Count > 0;
+    public bool HasHidden => _hiddenCount > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHidden))]
+    private int _hiddenCount = 0;
+
+    // ── Status tab — player stats ────────────────────────────
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HealthBar), nameof(HealthDisplay))]
+    private int health = 100;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HealthBar), nameof(HealthDisplay))]
+    private int maxHealth = 100;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HungerBar), nameof(HungerDisplay))]
+    private int hunger = 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EnergyBar), nameof(EnergyDisplay))]
+    private int tiredness = 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GearDisplay))]
+    private int armor = 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GearDisplay))]
+    private string? equippedWeapon;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GearDisplay))]
+    private string? equippedArmor;
+
+    public string HealthBar => BuildBar(Health, MaxHealth);
+    public string HungerBar => BuildBar(Hunger, 100);
+    public string EnergyBar => BuildBar(100 - Tiredness, 100);
+    public string HealthDisplay => $"{Health}/{MaxHealth}";
+    public string HungerDisplay => $"{Hunger}/100";
+    public string EnergyDisplay => $"{100 - Tiredness}/100";
+    public string GearDisplay
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Armor > 0) parts.Add($"🛡️ {Armor} DEF");
+            if (!string.IsNullOrEmpty(EquippedWeapon)) parts.Add($"⚔️ {EquippedWeapon}");
+            if (!string.IsNullOrEmpty(EquippedArmor)) parts.Add($"🥋 {EquippedArmor}");
+            return parts.Count > 0 ? string.Join("  ", parts) : "No gear equipped";
+        }
+    }
+
+    private static string BuildBar(int value, int max, int width = 10)
+    {
+        var pct = max > 0 ? Math.Clamp((double)value / max, 0.0, 1.0) : 0.0;
+        var filled = (int)(pct * width);
+        return new string('█', filled) + new string('░', width - filled);
+    }
 
     // ── Pockets (inventory) tab ─────────────────────────────
     public ObservableCollection<InventoryItem> InventoryItems { get; } = [];
@@ -64,17 +126,39 @@ public partial class SidebarViewModel(
             var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
             if (worldState is not null)
             {
-                // Property change notifications must fire on the main thread
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     CurrentLocation = worldState.CurrentLocation;
                     CurrentBiome = worldState.CurrentBiome;
                     TimeOfDay = worldState.TimeOfDay;
                     RegionDescription = worldState.RegionDescription;
+                    _hiddenCount = worldState.HiddenEntities?.Count ?? 0;
 
                     NearbyEntities.Clear();
                     foreach (var e in worldState.KnownEntities ?? [])
                         NearbyEntities.Add(e);
+
+                    AvailableExits.Clear();
+                    foreach (var e in worldState.AvailableExits ?? [])
+                        AvailableExits.Add(e);
+
+                    OnPropertyChanged(nameof(HasExits));
+                    OnPropertyChanged(nameof(HasHidden));
+                });
+            }
+
+            var playerStats = await worldStateService.GetPlayerStats(saveSlotId, cancellationToken);
+            if (playerStats is not null)
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    Health = playerStats.Health;
+                    MaxHealth = playerStats.MaxHealth;
+                    Hunger = playerStats.Hunger;
+                    Tiredness = playerStats.Tiredness;
+                    Armor = playerStats.Armor;
+                    EquippedWeapon = playerStats.EquippedWeapon;
+                    EquippedArmor = playerStats.EquippedArmor;
                 });
             }
 
@@ -100,3 +184,4 @@ public partial class SidebarViewModel(
         }
     }
 }
+
