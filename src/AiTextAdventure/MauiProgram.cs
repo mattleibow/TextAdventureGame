@@ -43,7 +43,7 @@ public static class MauiProgram
             var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
             // Use real Apple Intelligence on-device SLM on supported Apple platforms;
             // falls back to an unsupported-platform stub on Android/Windows.
-            IChatClient raw = AppleIntelligenceChatClientFactory.Create();
+            IChatClient raw = AppleIntelligenceChatClientFactory.Create(loggerFactory);
             return raw.AsBuilder()
                 .UseLogging(loggerFactory)
                 .UseFunctionInvocation()
@@ -65,9 +65,10 @@ public static class MauiProgram
         // -- Services --
         services.AddSingleton<WorldStateService>();
         services.AddSingleton<SaveSlotService>();
+        services.AddSingleton<GameOrchestrator>();
+        // AgentFactory and GameWorkflowFactory retained for future multi-agent workflow use
         services.AddSingleton<AgentFactory>();
         services.AddSingleton<GameWorkflowFactory>();
-        services.AddSingleton<GameOrchestrator>();
 
         // -- ViewModels --
         services.AddTransient<MainMenuViewModel>();

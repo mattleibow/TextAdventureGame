@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
 namespace AiTextAdventure.Services;
 
@@ -13,7 +14,7 @@ namespace AiTextAdventure.Services;
 /// </summary>
 public static class AppleIntelligenceChatClientFactory
 {
-    public static IChatClient Create()
+    public static IChatClient Create(ILoggerFactory loggerFactory)
     {
 #if IOS || MACCATALYST
         try
@@ -23,10 +24,10 @@ public static class AppleIntelligenceChatClientFactory
         catch
         {
             // Apple Intelligence not available on this device/OS version; use fallback
-            return new FallbackChatClient();
+            return new FallbackChatClient(loggerFactory.CreateLogger<FallbackChatClient>());
         }
 #else
-        return new FallbackChatClient();
+        return new FallbackChatClient(loggerFactory.CreateLogger<FallbackChatClient>());
 #endif
     }
 }

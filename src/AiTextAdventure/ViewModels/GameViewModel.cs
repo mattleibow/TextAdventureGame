@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using AiTextAdventure.Models;
 using AiTextAdventure.Services;
 
@@ -12,7 +13,8 @@ public record NarrativeParagraph(string Text)
 }
 
 public partial class GameViewModel(
-    GameOrchestrator orchestrator) : ObservableObject
+    GameOrchestrator orchestrator,
+    ILogger<GameViewModel> logger) : ObservableObject
 {
     [ObservableProperty]
     private string playerInput = "";
@@ -37,20 +39,27 @@ public partial class GameViewModel(
     /// </summary>
     public async Task InitializeAsync()
     {
-        if (_initialized || SaveSlotId == Guid.Empty) return;
+        if (_initialized || SaveSlotId == Guid.Empty)
+        {
+            logger.LogDebug("InitializeAsync skipped: initialized={Initialized}, saveSlotId={SaveSlotId}", _initialized, SaveSlotId);
+            return;
+        }
         _initialized = true;
+        logger.LogInformation("Initializing game view for save {SaveSlotId}", SaveSlotId);
 
         IsProcessing = true;
-        StatusMessage = "Loading world...";
+        StatusMessage = "Weaving the world...";
         try
         {
             var result = await orchestrator.InitializeGameAsync(SaveSlotId);
+            logger.LogInformation("InitializeAsync complete: narrative={Length} chars, suggestions={Count}", result.Narrative.Length, result.Suggestions.Count);
             AddNarrative(result.Narrative);
             SetSuggestions(result.Suggestions);
             StatusMessage = "Ready";
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "InitializeAsync failed for save {SaveSlotId}", SaveSlotId);
             AddNarrative($"[Failed to load world: {ex.Message}]");
             StatusMessage = "Error";
         }
@@ -64,8 +73,13 @@ public partial class GameViewModel(
     private async Task SubmitAction(string? actionText = null)
     {
         var input = actionText ?? PlayerInput;
-        if (string.IsNullOrWhiteSpace(input)) return;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            logger.LogDebug("SubmitAction called with empty input, ignoring");
+            return;
+        }
 
+        logger.LogInformation("SubmitAction: {Input}", input[..Math.Min(80, input.Length)]);
         IsProcessing = true;
         PlayerInput = "";
         StatusMessage = "Thinking...";
@@ -73,6 +87,7 @@ public partial class GameViewModel(
         try
         {
             var result = await orchestrator.ProcessTurnAsync(SaveSlotId, input);
+            logger.LogInformation("SubmitAction complete: narrative={Length} chars, suggestions={Count}", result.Narrative.Length, result.Suggestions.Count);
             SetSuggestions([]);
             AddNarrative(result.Narrative);
             SetSuggestions(result.Suggestions);
@@ -80,6 +95,7 @@ public partial class GameViewModel(
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "SubmitAction failed for save {SaveSlotId}", SaveSlotId);
             AddNarrative($"[Error: {ex.Message}]");
             StatusMessage = "Error occurred";
         }
@@ -91,6 +107,7 @@ public partial class GameViewModel(
 
     private void AddNarrative(string text)
     {
+        logger.LogDebug("AddNarrative: {Length} chars", text.Length);
         MainThread.BeginInvokeOnMainThread(() =>
             NarrativeHistory.Add(new NarrativeParagraph(text)));
     }
