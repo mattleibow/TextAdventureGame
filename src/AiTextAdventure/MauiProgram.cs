@@ -41,7 +41,9 @@ public static class MauiProgram
         services.AddSingleton<IChatClient>(sp =>
         {
             var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-            IChatClient raw = new AppleIntelligenceChatClient();
+            // Use real Apple Intelligence on-device SLM on supported Apple platforms;
+            // falls back to an unsupported-platform stub on Android/Windows.
+            IChatClient raw = AppleIntelligenceChatClientFactory.Create();
             return raw.AsBuilder()
                 .UseLogging(loggerFactory)
                 .UseFunctionInvocation()
