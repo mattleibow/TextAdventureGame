@@ -8,6 +8,9 @@ using AiTextAdventure.Services.Observability;
 using AiTextAdventure.ViewModels;
 using AiTextAdventure.Views;
 using AiTextAdventure.Workflows;
+#if DEBUG
+using MauiDevFlow.Agent;
+#endif
 
 namespace AiTextAdventure;
 
@@ -23,6 +26,10 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
+
+#if DEBUG
+        builder.AddMauiDevFlowAgent();
+#endif
 
         var services = builder.Services;
 

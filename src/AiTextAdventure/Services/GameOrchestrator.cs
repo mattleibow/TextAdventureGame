@@ -270,8 +270,8 @@ public class GameOrchestrator(
     {
         try
         {
-            var slots = await store.Query<SaveSlot>(s => s.Id == saveSlotId, GameJsonContext.Default.SaveSlot, ct);
-            var slot = slots.FirstOrDefault();
+            var all = await store.GetAll<SaveSlot>(GameJsonContext.Default.SaveSlot, ct);
+            var slot = all.FirstOrDefault(s => s.Id == saveSlotId);
             if (slot is not null)
             {
                 slot.LastPlayedAt = DateTime.UtcNow;

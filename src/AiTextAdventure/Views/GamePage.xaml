@@ -136,11 +136,14 @@
 
         <!-- ═══════════════════════════════════════════════ -->
         <!-- RIGHT: Tabbed Sidebar                           -->
-        <!-- All bindings resolve against SidebarViewModel   -->
-        <!-- (set via SidebarPanel.BindingContext in .cs)    -->
+        <!-- x:DataType="vm:SidebarViewModel" tells the     -->
+        <!-- MAUI compiled binding compiler that all         -->
+        <!-- bindings in this subtree target SidebarViewModel -->
+        <!-- BindingContext is set in code-behind            -->
         <!-- ═══════════════════════════════════════════════ -->
         <Grid Grid.Column="1"
               x:Name="SidebarPanel"
+              x:DataType="vm:SidebarViewModel"
               RowDefinitions="Auto,*"
               BackgroundColor="{StaticResource EventsBg}">
 
@@ -175,12 +178,13 @@
                 </Grid>
             </Frame>
 
-            <!-- Tab content — all bindings against SidebarViewModel -->
-            <ScrollView Grid.Row="1">
-                <StackLayout>
+            <!-- Tab content — each panel is a Grid child, fills the * row directly -->
+            <!-- This fixes CollectionView height collapse that happens inside ScrollView+StackLayout -->
+            <Grid Grid.Row="1">
 
-                    <!-- ── STATUS TAB ── -->
-                    <StackLayout IsVisible="{Binding IsStatusTab}" Padding="10,8" Spacing="8">
+                <!-- ── STATUS TAB ── -->
+                <ScrollView IsVisible="{Binding IsStatusTab}">
+                    <StackLayout Padding="10,8" Spacing="8">
                         <Label Text="📍 STATUS" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
                         <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
 
@@ -214,167 +218,162 @@
                             </CollectionView.ItemTemplate>
                         </CollectionView>
                     </StackLayout>
+                </ScrollView>
 
-                    <!-- ── POCKETS TAB ── -->
-                    <StackLayout IsVisible="{Binding IsPocketsTab}" Padding="10,8" Spacing="8">
-                        <Label Text="🎒 POCKETS" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
-                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
-
-                        <CollectionView ItemsSource="{Binding InventoryItems}" SelectionMode="None">
-                            <CollectionView.EmptyView>
-                                <Label Text="Empty pack."
-                                       Style="{StaticResource MutedLabelStyle}"
-                                       FontAttributes="Italic"
-                                       Margin="0,16"
-                                       HorizontalTextAlignment="Center" />
-                            </CollectionView.EmptyView>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="x:Object">
-                                    <Frame Style="{StaticResource CardStyle}" Margin="0,0,0,6" Padding="10,8">
-                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                            <StackLayout Grid.Column="0" Spacing="2">
-                                                <Label Text="{Binding ItemName}"
-                                                       TextColor="{StaticResource GoldText}"
-                                                       FontSize="13"
-                                                       FontAttributes="Bold" />
-                                                <Label Text="{Binding Description}"
-                                                       Style="{StaticResource MutedLabelStyle}"
-                                                       FontSize="11"
-                                                       LineBreakMode="WordWrap" />
-                                            </StackLayout>
-                                            <Label Grid.Column="1"
-                                                   Text="{Binding Quantity}"
+                <!-- ── POCKETS TAB ── -->
+                <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsPocketsTab}" Padding="10,8">
+                    <Label Grid.Row="0" Text="🎒 POCKETS" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
+                    <BoxView Grid.Row="1" Style="{StaticResource GoldSeparatorStyle}" Margin="0,6,0,4" />
+                    <CollectionView Grid.Row="2" ItemsSource="{Binding InventoryItems}" SelectionMode="None">
+                        <CollectionView.EmptyView>
+                            <Label Text="Empty pack."
+                                   Style="{StaticResource MutedLabelStyle}"
+                                   FontAttributes="Italic"
+                                   Margin="0,16"
+                                   HorizontalTextAlignment="Center" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="x:Object">
+                                <Frame Style="{StaticResource CardStyle}" Margin="0,0,0,6" Padding="10,8">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                        <StackLayout Grid.Column="0" Spacing="2">
+                                            <Label Text="{Binding ItemName}"
                                                    TextColor="{StaticResource GoldText}"
                                                    FontSize="13"
-                                                   FontAttributes="Bold"
-                                                   VerticalOptions="Center" />
+                                                   FontAttributes="Bold" />
+                                            <Label Text="{Binding Description}"
+                                                   Style="{StaticResource MutedLabelStyle}"
+                                                   FontSize="11"
+                                                   LineBreakMode="WordWrap" />
+                                        </StackLayout>
+                                        <Label Grid.Column="1"
+                                               Text="{Binding Quantity}"
+                                               TextColor="{StaticResource GoldText}"
+                                               FontSize="13"
+                                               FontAttributes="Bold"
+                                               VerticalOptions="Center" />
+                                    </Grid>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+
+                <!-- ── JOURNAL TAB ── -->
+                <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsJournalTab}" Padding="10,8">
+                    <Label Grid.Row="0" Text="📜 JOURNAL" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
+                    <BoxView Grid.Row="1" Style="{StaticResource GoldSeparatorStyle}" Margin="0,6,0,4" />
+                    <CollectionView Grid.Row="2" ItemsSource="{Binding JournalEntries}" SelectionMode="None">
+                        <CollectionView.EmptyView>
+                            <Label Text="No entries yet."
+                                   Style="{StaticResource MutedLabelStyle}"
+                                   FontAttributes="Italic"
+                                   Margin="0,16"
+                                   HorizontalTextAlignment="Center" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="x:Object">
+                                <StackLayout Margin="0,0,0,8">
+                                    <Frame Style="{StaticResource CardStyle}" Padding="10,8">
+                                        <StackLayout Spacing="4">
+                                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                                <Label Grid.Column="0"
+                                                       Text="{Binding Type}"
+                                                       TextColor="{StaticResource GoldText}"
+                                                       FontSize="9"
+                                                       FontAttributes="Bold"
+                                                       CharacterSpacing="1"
+                                                       VerticalOptions="Center" />
+                                                <Label Grid.Column="2"
+                                                       Text="{Binding Timestamp, StringFormat='{0:HH:mm}'}"
+                                                       Style="{StaticResource MutedLabelStyle}"
+                                                       FontSize="9"
+                                                       VerticalOptions="Center" />
+                                            </Grid>
+                                            <Label Text="{Binding EntryText}"
+                                                   Style="{StaticResource NarrativeLabelStyle}"
+                                                   FontSize="12"
+                                                   LineBreakMode="WordWrap" />
+                                        </StackLayout>
+                                    </Frame>
+                                </StackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+
+                <!-- ── EVENTS TAB ── -->
+                <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsEventsTab}" Padding="10,8">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
+                        <Label Grid.Column="0" Text="🔮" FontSize="13" VerticalOptions="Center" />
+                        <Label Grid.Column="1"
+                               Text="OBSERVER"
+                               Style="{StaticResource SectionHeaderStyle}"
+                               FontSize="10"
+                               VerticalOptions="Center" />
+                        <Button Grid.Column="2"
+                                Text="Clear"
+                                Style="{StaticResource GhostButtonStyle}"
+                                FontSize="10"
+                                Command="{Binding ClearAgentEventsCommand}" />
+                    </Grid>
+                    <BoxView Grid.Row="1" Style="{StaticResource GoldSeparatorStyle}" Margin="0,6,0,4" />
+
+                    <CollectionView Grid.Row="2"
+                                    ItemsSource="{Binding AgentEvents}"
+                                    SelectionMode="None"
+                                    ItemsUpdatingScrollMode="KeepLastItemInView">
+                        <CollectionView.EmptyView>
+                            <Label Text="No events yet."
+                                   Style="{StaticResource MutedLabelStyle}"
+                                   FontAttributes="Italic"
+                                   Margin="0,16"
+                                   HorizontalTextAlignment="Center" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AgentEventViewModel">
+                                <StackLayout Margin="0,0,0,4">
+                                    <Frame BackgroundColor="{StaticResource CardBg}"
+                                           BorderColor="{StaticResource BorderSubtle}"
+                                           CornerRadius="4"
+                                           Padding="8,6"
+                                           HasShadow="False">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                            <Label Grid.Column="0"
+                                                   Text="{Binding Icon}"
+                                                   FontSize="12"
+                                                   VerticalOptions="Start" />
+                                            <StackLayout Grid.Column="1" Spacing="2">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <Label Grid.Column="0"
+                                                           Text="{Binding AgentName}"
+                                                           FontSize="10"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{Binding AgentColor}" />
+                                                    <Label Grid.Column="1"
+                                                           Text="{Binding TimeStamp}"
+                                                           FontSize="9"
+                                                           TextColor="{StaticResource TextDim}" />
+                                                </Grid>
+                                                <Label Text="{Binding Title}"
+                                                       FontSize="11"
+                                                       TextColor="{StaticResource TextPrimary}" />
+                                                <Label Text="{Binding Detail}"
+                                                       FontSize="10"
+                                                       TextColor="{StaticResource TextMuted}"
+                                                       LineBreakMode="TailTruncation"
+                                                       MaxLines="2"
+                                                       IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
+                                            </StackLayout>
                                         </Grid>
                                     </Frame>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-                    </StackLayout>
+                                </StackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
 
-                    <!-- ── JOURNAL TAB ── -->
-                    <StackLayout IsVisible="{Binding IsJournalTab}" Padding="10,8" Spacing="8">
-                        <Label Text="📜 JOURNAL" Style="{StaticResource SectionHeaderStyle}" FontSize="11" />
-                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
-
-                        <CollectionView ItemsSource="{Binding JournalEntries}" SelectionMode="None">
-                            <CollectionView.EmptyView>
-                                <Label Text="No entries yet."
-                                       Style="{StaticResource MutedLabelStyle}"
-                                       FontAttributes="Italic"
-                                       Margin="0,16"
-                                       HorizontalTextAlignment="Center" />
-                            </CollectionView.EmptyView>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="x:Object">
-                                    <StackLayout Margin="0,0,0,8">
-                                        <Frame Style="{StaticResource CardStyle}" Padding="10,8">
-                                            <StackLayout Spacing="4">
-                                                <Grid ColumnDefinitions="Auto,*,Auto">
-                                                    <Label Grid.Column="0"
-                                                           Text="{Binding Type}"
-                                                           TextColor="{StaticResource GoldText}"
-                                                           FontSize="9"
-                                                           FontAttributes="Bold"
-                                                           CharacterSpacing="1"
-                                                           VerticalOptions="Center" />
-                                                    <Label Grid.Column="2"
-                                                           Text="{Binding Timestamp, StringFormat='{0:HH:mm}'}"
-                                                           Style="{StaticResource MutedLabelStyle}"
-                                                           FontSize="9"
-                                                           VerticalOptions="Center" />
-                                                </Grid>
-                                                <Label Text="{Binding EntryText}"
-                                                       Style="{StaticResource NarrativeLabelStyle}"
-                                                       FontSize="12"
-                                                       LineBreakMode="WordWrap" />
-                                            </StackLayout>
-                                        </Frame>
-                                    </StackLayout>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-                    </StackLayout>
-
-                    <!-- ── EVENTS TAB ──
-                         IMPORTANT: Do NOT set BindingContext on this StackLayout.
-                         IsVisible MUST resolve against SidebarViewModel.
-                         Use EventsPanel.* path for everything inside.
-                    -->
-                    <StackLayout IsVisible="{Binding IsEventsTab}" Padding="10,8" Spacing="8">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
-                            <Label Grid.Column="0" Text="🔮" FontSize="13" VerticalOptions="Center" />
-                            <Label Grid.Column="1"
-                                   Text="OBSERVER"
-                                   Style="{StaticResource SectionHeaderStyle}"
-                                   FontSize="10"
-                                   VerticalOptions="Center" />
-                            <Button Grid.Column="2"
-                                    Text="Clear"
-                                    Style="{StaticResource GhostButtonStyle}"
-                                    FontSize="10"
-                                    Command="{Binding EventsPanel.ClearEventsCommand}" />
-                        </Grid>
-                        <BoxView Style="{StaticResource GoldSeparatorStyle}" Margin="0,0" />
-
-                        <CollectionView ItemsSource="{Binding EventsPanel.Events}"
-                                        SelectionMode="None"
-                                        ItemsUpdatingScrollMode="KeepLastItemInView">
-                            <CollectionView.EmptyView>
-                                <Label Text="No events yet."
-                                       Style="{StaticResource MutedLabelStyle}"
-                                       FontAttributes="Italic"
-                                       Margin="0,16"
-                                       HorizontalTextAlignment="Center" />
-                            </CollectionView.EmptyView>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:AgentEventViewModel">
-                                    <StackLayout Margin="0,0,0,4">
-                                        <Frame BackgroundColor="{StaticResource CardBg}"
-                                               BorderColor="{StaticResource BorderSubtle}"
-                                               CornerRadius="4"
-                                               Padding="8,6"
-                                               HasShadow="False">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                                                <Label Grid.Column="0"
-                                                       Text="{Binding Icon}"
-                                                       FontSize="12"
-                                                       VerticalOptions="Start" />
-                                                <StackLayout Grid.Column="1" Spacing="2">
-                                                    <Grid ColumnDefinitions="*,Auto">
-                                                        <Label Grid.Column="0"
-                                                               Text="{Binding AgentName}"
-                                                               FontSize="10"
-                                                               FontAttributes="Bold"
-                                                               TextColor="{Binding AgentColor}" />
-                                                        <Label Grid.Column="1"
-                                                               Text="{Binding TimeStamp}"
-                                                               FontSize="9"
-                                                               TextColor="{StaticResource TextDim}" />
-                                                    </Grid>
-                                                    <Label Text="{Binding Title}"
-                                                           FontSize="11"
-                                                           TextColor="{StaticResource TextPrimary}" />
-                                                    <Label Text="{Binding Detail}"
-                                                           FontSize="10"
-                                                           TextColor="{StaticResource TextMuted}"
-                                                           LineBreakMode="TailTruncation"
-                                                           MaxLines="2"
-                                                           IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
-                                                </StackLayout>
-                                            </Grid>
-                                        </Frame>
-                                    </StackLayout>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-                    </StackLayout>
-
-                </StackLayout>
-            </ScrollView>
+            </Grid>
         </Grid>
 
     </Grid>

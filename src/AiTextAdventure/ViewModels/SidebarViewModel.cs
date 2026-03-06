@@ -17,6 +17,10 @@ public partial class SidebarViewModel(
 {
     public EventsPanelViewModel EventsPanel { get; } = eventsPanel;
 
+    // Direct exposures to avoid deep-path compiled binding issues (EventsPanel.Events fails)
+    public System.Collections.ObjectModel.ObservableCollection<AgentEventViewModel> AgentEvents => EventsPanel.Events;
+    public System.Windows.Input.ICommand ClearAgentEventsCommand => EventsPanel.ClearEventsCommand;
+
     // ── Tab selection ────────────────────────────────────────
     [ObservableProperty]
     private int selectedTab = 0; // 0=Status 1=Pockets 2=Journal 3=Events

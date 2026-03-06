@@ -33,11 +33,8 @@ public class SaveSlotService(IDocumentStore store, ILogger<SaveSlotService> logg
     public async Task<SaveSlot?> GetSaveSlot(Guid id, CancellationToken cancellationToken = default)
     {
         logger.LogDebug("DB: Query SaveSlot {Id}", id);
-        var results = await store.Query<SaveSlot>(
-            s => s.Id == id,
-            GameJsonContext.Default.SaveSlot,
-            cancellationToken);
-        return results.FirstOrDefault();
+        var all = await store.GetAll<SaveSlot>(GameJsonContext.Default.SaveSlot, cancellationToken);
+        return all.FirstOrDefault(s => s.Id == id);
     }
 
     public async Task DeleteSaveSlot(Guid id, CancellationToken cancellationToken = default)

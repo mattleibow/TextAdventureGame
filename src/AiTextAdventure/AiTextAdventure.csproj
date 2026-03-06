@@ -60,7 +60,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Maui.Essentials.AI" Version="10.0.50-ci.main.26156.2" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.31" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 		<PackageReference Include="Microsoft.Extensions.AI" Version="10.3.0" />
 		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.3.0" />
@@ -69,6 +69,7 @@
 		<PackageReference Include="Shiny.SqliteDocumentDb" Version="1.0.13-beta-0001" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="*" />
 		<PackageReference Include="OpenTelemetry.Api" Version="1.13.*" />
+		<PackageReference Include="Redth.MauiDevFlow.Agent" Version="*" Condition="'$(Configuration)' == 'Debug'" />
 	</ItemGroup>
 
 </Project>

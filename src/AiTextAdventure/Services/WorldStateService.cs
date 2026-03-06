@@ -15,11 +15,9 @@ public class WorldStateService(
     public async Task<WorldState?> GetCurrentState(Guid saveSlotId, CancellationToken cancellationToken = default)
     {
         logger.LogDebug("DB: Query WorldState for save {SaveSlotId}", saveSlotId);
-        var results = await store.Query<WorldState>(
-            w => w.SaveSlotId == saveSlotId,
-            GameJsonContext.Default.WorldState,
-            cancellationToken);
-        var state = results.FirstOrDefault();
+        // Use GetAll + in-memory filter: Shiny's LINQ-to-SQL doesn't handle Guid comparisons correctly
+        var all = await store.GetAll<WorldState>(GameJsonContext.Default.WorldState, cancellationToken);
+        var state = all.FirstOrDefault(w => w.SaveSlotId == saveSlotId);
         if (state is not null)
             logger.LogDebug("DB: Found WorldState {Location}/{Biome}", state.CurrentLocation, state.CurrentBiome);
         else
@@ -53,10 +51,8 @@ public class WorldStateService(
     public async Task<IReadOnlyList<InventoryItem>> GetInventory(Guid saveSlotId, CancellationToken cancellationToken = default)
     {
         logger.LogDebug("DB: Query Inventory for save {SaveSlotId}", saveSlotId);
-        var items = await store.Query<InventoryItem>(
-            i => i.SaveSlotId == saveSlotId,
-            GameJsonContext.Default.InventoryItem,
-            cancellationToken);
+        var all = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
+        var items = all.Where(i => i.SaveSlotId == saveSlotId).ToList();
         logger.LogDebug("DB: Found {Count} inventory items", items.Count);
         return items;
     }
@@ -64,11 +60,9 @@ public class WorldStateService(
     public async Task<IReadOnlyList<JournalEntry>> GetJournalEntries(Guid saveSlotId, CancellationToken cancellationToken = default)
     {
         logger.LogDebug("DB: Query JournalEntries for save {SaveSlotId}", saveSlotId);
-        var results = await store.Query<JournalEntry>(
-            j => j.SaveSlotId == saveSlotId,
-            GameJsonContext.Default.JournalEntry,
-            cancellationToken);
-        var ordered = results.OrderByDescending(j => j.Timestamp).ToList();
+        var all = await store.GetAll<JournalEntry>(GameJsonContext.Default.JournalEntry, cancellationToken);
+        var ordered = all.Where(j => j.SaveSlotId == saveSlotId)
+                         .OrderByDescending(j => j.Timestamp).ToList();
         logger.LogDebug("DB: Found {Count} journal entries", ordered.Count);
         return ordered;
     }
