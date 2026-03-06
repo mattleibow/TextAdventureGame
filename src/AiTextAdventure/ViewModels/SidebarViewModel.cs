@@ -60,13 +60,14 @@ public partial class SidebarViewModel(
             var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
             if (worldState is not null)
             {
-                CurrentLocation = worldState.CurrentLocation;
-                CurrentBiome = worldState.CurrentBiome;
-                TimeOfDay = worldState.TimeOfDay;
-                RegionDescription = worldState.RegionDescription;
-
+                // Property change notifications must fire on the main thread
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
+                    CurrentLocation = worldState.CurrentLocation;
+                    CurrentBiome = worldState.CurrentBiome;
+                    TimeOfDay = worldState.TimeOfDay;
+                    RegionDescription = worldState.RegionDescription;
+
                     NearbyEntities.Clear();
                     foreach (var e in worldState.KnownEntities ?? [])
                         NearbyEntities.Add(e);

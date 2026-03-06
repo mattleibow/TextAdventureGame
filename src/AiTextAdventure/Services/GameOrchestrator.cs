@@ -71,6 +71,7 @@ public class GameOrchestrator(
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Turn: {Input}", playerInput[..Math.Min(60, playerInput.Length)]);
+        eventStream.Emit(new AgentEvent($"▶ \"{playerInput[..Math.Min(40, playerInput.Length)]}\"", "GameMaster", AgentEventKind.AgentInvoked));
 
         var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
         var worldContext = BuildCompactContext(worldState);
@@ -141,6 +142,7 @@ public class GameOrchestrator(
             }
 
             await PersistJournalEntry(saveSlotId, narrativeText, cancellationToken);
+            eventStream.Emit(new AgentEvent("💾 Journal saved", "Database", AgentEventKind.ToolResult));
             await UpdateLastPlayed(saveSlotId, cancellationToken);
 
             eventStream.Emit(new AgentEvent("Turn complete", "GameMaster", AgentEventKind.WorkflowComplete));
