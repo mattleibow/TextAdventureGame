@@ -69,7 +69,6 @@
 		<PackageReference Include="Shiny.SqliteDocumentDb" Version="1.0.13-beta-0001" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="*" />
 		<PackageReference Include="OpenTelemetry.Api" Version="1.13.*" />
-		<PackageReference Include="System.Reactive" Version="*" />
 	</ItemGroup>
 
 </Project>
