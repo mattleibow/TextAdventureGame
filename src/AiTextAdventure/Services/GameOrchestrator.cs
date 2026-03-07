@@ -299,15 +299,24 @@ public class GameOrchestrator(
             {
                 if (string.IsNullOrWhiteSpace(item.ItemName)) continue;
 
-                // Guard 1: item must be in the portable items list (KnownEntities), NOT landmarks
+                // Guard 1: item must be in the portable items list (KnownEntities)
                 var exists = (worldState.KnownEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
                 if (!exists) continue;
 
-                // Guard 2: hard blocklist for landmark/structure keywords — never pickable
-                if (IsLandmark(item.ItemName))
+                // Guard 2: item must NOT be in the landmarks list (most reliable check)
+                var isInLandmarks = (worldState.LandmarkEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
+                if (isInLandmarks)
                 {
                     eventStream.Emit(new AgentEvent($"🚫 Cannot pick up landmark: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
                     logger.LogInformation("Blocked landmark pickup attempt: {Item}", item.ItemName);
+                    continue;
+                }
+
+                // Guard 3: word-boundary keyword blocklist as last-resort safety net
+                if (IsLandmarkByWords(item.ItemName))
+                {
+                    eventStream.Emit(new AgentEvent($"🚫 Blocked non-portable: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
+                    logger.LogInformation("Blocked non-portable keyword match: {Item}", item.ItemName);
                     continue;
                 }
 
@@ -516,28 +525,38 @@ public class GameOrchestrator(
     /// Returns true if the item name looks like a landmark/structure that cannot be picked up.
     /// This is a hard safety net — the prompt and KnownEntities list are the primary guards.
     /// </summary>
-    private static bool IsLandmark(string itemName)
+    // Landmark keywords that, when they appear as a whole word, indicate a non-portable structure.
+    // Using word-boundary matching prevents false positives like "tower shield", "tree branch", "archery bow".
+    private static readonly HashSet<string> LandmarkWords = new(StringComparer.OrdinalIgnoreCase)
     {
-        var lower = itemName.ToLowerInvariant();
-        return lower.Contains("ruins") || lower.Contains("ruin") ||
-               lower.Contains("cave") || lower.Contains("cavern") ||
-               lower.Contains("altar") || lower.Contains("shrine") ||
-               lower.Contains("statue") || lower.Contains("sculpture") ||
-               lower.Contains("fountain") || lower.Contains("well") ||
-               lower.Contains("temple") || lower.Contains("cathedral") ||
-               lower.Contains("tower") || lower.Contains("turret") ||
-               lower.Contains("bridge") || lower.Contains("arch") ||
-               lower.Contains("gate") || lower.Contains("door") || lower.Contains("portal") ||
-               lower.Contains("campfire") || lower.Contains("firepit") ||
-               lower.Contains("column") || lower.Contains("pillar") || lower.Contains("obelisk") ||
-               lower.Contains("monolith") || lower.Contains("cairn") || lower.Contains("standing stone") ||
-               lower.Contains("tree") || lower.Contains("oak") || lower.Contains("pine") ||
-               lower.Contains("boulder") || lower.Contains("cliff") || lower.Contains("outcrop") ||
-               lower.Contains("pool") || lower.Contains("pond") || lower.Contains("lake") ||
-               lower.Contains("waterfall") || lower.Contains("stream") || lower.Contains("river") ||
-               lower.Contains("path") || lower.Contains("trail") || lower.Contains("road") ||
-               lower.Contains("wall") || lower.Contains("fence") || lower.Contains("rampart") ||
-               lower.Contains("entrance") || lower.Contains("exit") || lower.Contains("passage");
+        "ruins", "ruin", "cave", "cavern", "grotto",
+        "altar", "shrine", "temple", "cathedral", "chapel",
+        "statue", "sculpture", "monument",
+        "fountain", "well",
+        "tower", "turret", "steeple",
+        "bridge",
+        "gate", "portal",
+        "campfire", "firepit", "bonfire",
+        "column", "pillar", "obelisk", "monolith",
+        "cairn",
+        "boulder", "cliff", "outcrop",
+        "pool", "pond", "lake", "marsh",
+        "waterfall", "stream", "river",
+        "road", "trail",
+        "rampart", "battlement",
+        "entrance", "passage",
+    };
+
+    /// <summary>
+    /// Returns true if any word in the item name is an exact match to a landmark keyword.
+    /// Uses word splitting to prevent false positives (e.g. "tower shield" is NOT a landmark;
+    /// only "tower" standalone triggers it).
+    /// </summary>
+    private static bool IsLandmarkByWords(string itemName)
+    {
+        // Split on spaces and common separators, check each token
+        var words = itemName.Split([' ', '-', '_', ','], StringSplitOptions.RemoveEmptyEntries);
+        return words.Any(w => LandmarkWords.Contains(w));
     }
 
     private static void ApplyEffect(PlayerStats stats, string effect)
