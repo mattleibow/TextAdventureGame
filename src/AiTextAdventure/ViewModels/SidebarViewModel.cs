@@ -19,6 +19,9 @@ public partial class SidebarViewModel(
 {
     public EventsPanelViewModel EventsPanel { get; } = eventsPanel;
 
+    /// <summary>Raised on the main thread after map tile data is updated so the view can invalidate.</summary>
+    public event Action? MapInvalidated;
+
     // Direct exposures to avoid deep-path compiled binding issues
     public ObservableCollection<AgentEventViewModel> AgentEvents => EventsPanel.Events;
     public System.Windows.Input.ICommand ClearAgentEventsCommand => EventsPanel.ClearEventsCommand;
@@ -198,6 +201,7 @@ public partial class SidebarViewModel(
             {
                 MapDrawable.Tiles = tiles;
                 OnPropertyChanged(nameof(MapDrawable));
+                MapInvalidated?.Invoke();
             });
         }
         catch

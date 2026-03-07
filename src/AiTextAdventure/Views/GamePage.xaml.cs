@@ -35,15 +35,19 @@ public partial class GamePage : ContentPage
         // but it's accessed via SidebarViewModel.EventsPanel, so the binding path works.
     }
 
+    private void OnMapInvalidated() => MapGraphicsView.Invalidate();
+
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        _sidebarViewModel.MapInvalidated += OnMapInvalidated;
         await _gameViewModel.InitializeAsync();
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        _sidebarViewModel.MapInvalidated -= OnMapInvalidated;
         _sidebarViewModel.EventsPanel.Unsubscribe();
     }
 }
