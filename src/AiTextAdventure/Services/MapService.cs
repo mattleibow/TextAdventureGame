@@ -27,8 +27,9 @@ public class MapService(
         - Biome MUST be geographically compatible with neighbours given.
         - Valid biomes: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra.
         - Transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins.
-        - Features: 1-2 large immovable things. HiddenItems: exactly 5 thematic named items (healing, food, weapon, armor, danger). Never use "item1".
-        - Farther from start = more dangerous/exotic.
+        - Features: 1-2 large IMMOVABLE landmarks (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, tree, rock, pool). These CANNOT be picked up.
+        - HiddenItems: exactly 5 PORTABLE items a player can pick up (healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, venomous creature/trap). Never landmarks.
+        - Never use "item1", "feature1". Farther from start = more dangerous/exotic.
         """;
 
     // Direction → (dx, dy) mapping
@@ -144,7 +145,8 @@ public class MapService(
     }
 
     /// <summary>
-    /// Marks a tile as revealed (look-around performed). Moves HiddenItems to KnownEntities in WorldState.
+    /// Marks a tile as revealed (look-around performed). Moves HiddenItems to KnownEntities (pickup list) in WorldState.
+    /// Landmarks remain in LandmarkEntities — they are never added to the pickup list.
     /// </summary>
     public async Task RevealTile(Guid saveSlotId, int x, int y, WorldState worldState, CancellationToken ct = default)
     {
@@ -157,7 +159,7 @@ public class MapService(
             await store.Set(tile.Id.ToString(), tile, GameJsonContext.Default.MapTile, ct);
         }
 
-        // Add hidden items to KnownEntities in WorldState
+        // Move hidden PORTABLE items to KnownEntities (pickup list)
         worldState.KnownEntities ??= [];
         worldState.HiddenEntities ??= [];
         foreach (var h in tile.HiddenItems)
@@ -167,7 +169,10 @@ public class MapService(
         }
         worldState.HiddenEntities = [];
 
-        eventStream.Emit(new AgentEvent($"🔍 Revealed {tile.HiddenItems.Count} hidden items at ({x},{y})", "WorldGen", AgentEventKind.AgentOutput));
+        // Ensure landmarks are tracked separately (inspect-only, never pickup)
+        worldState.LandmarkEntities = [.. tile.Features];
+
+        eventStream.Emit(new AgentEvent($"🔍 Revealed {tile.HiddenItems.Count} items at ({x},{y})", "WorldGen", AgentEventKind.AgentOutput));
     }
 
     /// <summary>Syncs tile data into the WorldState snapshot fields.</summary>
@@ -177,19 +182,18 @@ public class MapService(
         worldState.CurrentLocation = tile.LocationName;
         worldState.RegionDescription = tile.Description;
 
-        // KnownEntities = visible features
-        worldState.KnownEntities = [.. tile.Features];
+        // Landmarks are immovable features — never in KnownEntities (pickup list)
+        worldState.LandmarkEntities = [.. tile.Features];
 
-        // If already revealed, merge hidden items too
+        // KnownEntities = only portable items (revealed hidden items)
         if (tile.IsRevealed)
         {
-            foreach (var h in tile.HiddenItems)
-                if (!worldState.KnownEntities.Contains(h))
-                    worldState.KnownEntities.Add(h);
+            worldState.KnownEntities = [.. tile.HiddenItems];
             worldState.HiddenEntities = [];
         }
         else
         {
+            worldState.KnownEntities = [];
             worldState.HiddenEntities = [.. tile.HiddenItems];
         }
 
@@ -207,9 +211,9 @@ public class MapService(
         sb.Append($"[{tile.Biome.ToUpperInvariant()} — {tile.LocationName}] ({tile.X},{tile.Y})");
         sb.Append($"\n{tile.Description}");
         if (!string.IsNullOrEmpty(tile.Atmosphere)) sb.Append($" {tile.Atmosphere}");
-        if (tile.Features.Count > 0) sb.Append($"\nVisible: {string.Join(", ", tile.Features)}.");
+        if (tile.Features.Count > 0) sb.Append($"\nLandmarks (inspect only, cannot pick up): {string.Join(", ", tile.Features)}.");
         if (isRevealed && tile.HiddenItems.Count > 0)
-            sb.Append($"\nDiscovered: {string.Join(", ", tile.HiddenItems)}.");
+            sb.Append($"\nPortable items (can be picked up): {string.Join(", ", tile.HiddenItems)}.");
         if (inventory is { Count: > 0 })
             sb.Append($"\nInventory: {string.Join(", ", inventory.Take(4))}.");
         return sb.ToString();

@@ -56,11 +56,13 @@ public partial class SidebarViewModel(
     [ObservableProperty] private string currentBiome = "—";
     [ObservableProperty] private string timeOfDay = "—";
     [ObservableProperty] private string regionDescription = "";
-    public ObservableCollection<string> NearbyEntities  { get; } = [];
+    public ObservableCollection<string> NearbyEntities  { get; } = [];  // portable items
+    public ObservableCollection<string> LandmarkEntities { get; } = [];  // inspect-only features
     public ObservableCollection<string> AvailableExits  { get; } = [];
 
-    public bool HasExits  => AvailableExits.Count > 0;
-    public bool HasHidden => HiddenCount > 0;
+    public bool HasExits     => AvailableExits.Count > 0;
+    public bool HasHidden    => HiddenCount > 0;
+    public bool HasLandmarks => LandmarkEntities.Count > 0;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasHidden))]
@@ -155,12 +157,17 @@ public partial class SidebarViewModel(
                     foreach (var e in worldState.KnownEntities ?? [])
                         NearbyEntities.Add(e);
 
+                    LandmarkEntities.Clear();
+                    foreach (var e in worldState.LandmarkEntities ?? [])
+                        LandmarkEntities.Add(e);
+
                     AvailableExits.Clear();
                     foreach (var e in worldState.AvailableExits ?? [])
                         AvailableExits.Add(e);
 
                     OnPropertyChanged(nameof(HasExits));
                     OnPropertyChanged(nameof(HasHidden));
+                    OnPropertyChanged(nameof(HasLandmarks));
                 });
             }
 

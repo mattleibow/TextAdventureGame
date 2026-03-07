@@ -264,11 +264,27 @@
                                FontAttributes="Italic"
                                Margin="0,2,0,0" />
 
-                        <!-- Nearby entities -->
-                        <Label Text="NEARBY" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,6,0,2" />
-                        <CollectionView ItemsSource="{Binding NearbyEntities}" SelectionMode="None" HeightRequest="150">
+                        <!-- Landmarks — inspect only, cannot be picked up -->
+                        <Label IsVisible="{Binding HasLandmarks}"
+                               Text="LANDMARKS" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,6,0,2" />
+                        <CollectionView IsVisible="{Binding HasLandmarks}"
+                                        ItemsSource="{Binding LandmarkEntities}" SelectionMode="None" HeightRequest="80">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Label Text="{Binding .}"
+                                           TextColor="{StaticResource TextMuted}"
+                                           FontSize="11"
+                                           FontAttributes="Italic"
+                                           Padding="0,2" />
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <!-- Nearby portable items -->
+                        <Label Text="ITEMS" Style="{StaticResource SectionHeaderStyle}" FontSize="10" Margin="0,6,0,2" />
+                        <CollectionView ItemsSource="{Binding NearbyEntities}" SelectionMode="None" HeightRequest="120">
                             <CollectionView.EmptyView>
-                                <Label Text="Nothing visible yet. Look around!"
+                                <Label Text="Nothing here. Look around!"
                                        Style="{StaticResource MutedLabelStyle}"
                                        FontAttributes="Italic"
                                        FontSize="10" />

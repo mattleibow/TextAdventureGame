@@ -40,10 +40,12 @@ public class GameOrchestrator(
         Resolve game state changes. Output ONLY valid JSON (no markdown):
         {"ItemsPickedUp":[],"ItemsDropped":[],"EntitiesRemoved":[],"NewEntities":[]}
         Rules:
-        - ItemsPickedUp: [{"ItemName":"name","Description":"brief desc"}] ONLY if item is in Entities.
+        - ItemsPickedUp: [{"ItemName":"name","Description":"brief desc"}] ONLY for PORTABLE items in the "Portable items" list.
+        - NEVER put landmarks, ruins, caves, altars, statues, fountains, bridges, towers, trees, rocks, campfires, or any structure into ItemsPickedUp — they cannot be picked up.
+        - Only physical hand-held objects belong in ItemsPickedUp: potions, herbs, food, weapons (knife/sword/axe), armor (cloak/bracers/shield), gems, scrolls, keys, coins.
         - ItemsDropped: item name strings the player explicitly dropped.
-        - EntitiesRemoved: names to remove from world (picked up or destroyed).
-        - NewEntities: newly created/discovered entity names.
+        - EntitiesRemoved: names to remove from portable items list (picked up or destroyed).
+        - NewEntities: newly created/discovered portable entity names.
         - If nothing changed, return all empty arrays.
         """;
 
@@ -210,9 +212,11 @@ public class GameOrchestrator(
             try
             {
                 var hasHidden = (worldState?.HiddenEntities?.Count ?? 0) > 0;
-                var nearbyEntities = string.Join(", ", (worldState?.KnownEntities ?? []).Take(3));
+                var portableItems = string.Join(", ", (worldState?.KnownEntities ?? []).Take(3));
+                var landmarks = string.Join(", ", (worldState?.LandmarkEntities ?? []).Take(2));
                 var suggContext = $"Location: {worldState?.CurrentLocation} ({worldState?.CurrentBiome}). Exits: north, south, east, west.";
-                if (!string.IsNullOrEmpty(nearbyEntities)) suggContext += $" Nearby: {nearbyEntities}.";
+                if (!string.IsNullOrEmpty(landmarks)) suggContext += $" Landmarks to examine: {landmarks}.";
+                if (!string.IsNullOrEmpty(portableItems)) suggContext += $" Portable items to pick up: {portableItems}.";
                 if (hasHidden) suggContext += " (undiscovered things here)";
 
                 var suggMessages = new List<ChatMessage>
@@ -258,11 +262,16 @@ public class GameOrchestrator(
         eventStream.Emit(new AgentEvent("Resolving action...", "ActionResolver", AgentEventKind.AgentInvoked));
         try
         {
-            var entities = string.Join(", ", (worldState.KnownEntities ?? []).Take(6));
+            var portableItems = string.Join(", ", (worldState.KnownEntities ?? []).Take(6));
+            var landmarks = string.Join(", ", (worldState.LandmarkEntities ?? []).Take(4));
+            var userCtx = $"Portable items: {(string.IsNullOrEmpty(portableItems) ? "none" : portableItems)}.";
+            if (!string.IsNullOrEmpty(landmarks)) userCtx += $" Landmarks (inspect only): {landmarks}.";
+            userCtx += $" Action: {playerInput}. Narrative: {narrativeText[..Math.Min(120, narrativeText.Length)]}";
+
             var resolverMessages = new List<ChatMessage>
             {
                 new(ChatRole.System, ActionResolverSystemPrompt),
-                new(ChatRole.User, $"Entities: {entities}. Action: {playerInput}. Narrative: {narrativeText[..Math.Min(120, narrativeText.Length)]}")
+                new(ChatRole.User, userCtx)
             };
 
             var resolverResp = await chatClient.GetResponseAsync(resolverMessages, cancellationToken: cancellationToken);
@@ -289,8 +298,18 @@ public class GameOrchestrator(
             foreach (var item in result.ItemsPickedUp)
             {
                 if (string.IsNullOrWhiteSpace(item.ItemName)) continue;
+
+                // Guard 1: item must be in the portable items list (KnownEntities), NOT landmarks
                 var exists = (worldState.KnownEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
                 if (!exists) continue;
+
+                // Guard 2: hard blocklist for landmark/structure keywords — never pickable
+                if (IsLandmark(item.ItemName))
+                {
+                    eventStream.Emit(new AgentEvent($"🚫 Cannot pick up landmark: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
+                    logger.LogInformation("Blocked landmark pickup attempt: {Item}", item.ItemName);
+                    continue;
+                }
 
                 var effect = InferItemEffect(item.ItemName, item.Description);
                 if (effect.StartsWith("poison"))
@@ -492,6 +511,34 @@ public class GameOrchestrator(
 
     private static bool IsConsumableEffect(string effect) => effect.StartsWith("heal") || effect.StartsWith("food");
     private static bool IsEquippableEffect(string effect) => effect.StartsWith("weapon") || effect.StartsWith("armor");
+
+    /// <summary>
+    /// Returns true if the item name looks like a landmark/structure that cannot be picked up.
+    /// This is a hard safety net — the prompt and KnownEntities list are the primary guards.
+    /// </summary>
+    private static bool IsLandmark(string itemName)
+    {
+        var lower = itemName.ToLowerInvariant();
+        return lower.Contains("ruins") || lower.Contains("ruin") ||
+               lower.Contains("cave") || lower.Contains("cavern") ||
+               lower.Contains("altar") || lower.Contains("shrine") ||
+               lower.Contains("statue") || lower.Contains("sculpture") ||
+               lower.Contains("fountain") || lower.Contains("well") ||
+               lower.Contains("temple") || lower.Contains("cathedral") ||
+               lower.Contains("tower") || lower.Contains("turret") ||
+               lower.Contains("bridge") || lower.Contains("arch") ||
+               lower.Contains("gate") || lower.Contains("door") || lower.Contains("portal") ||
+               lower.Contains("campfire") || lower.Contains("firepit") ||
+               lower.Contains("column") || lower.Contains("pillar") || lower.Contains("obelisk") ||
+               lower.Contains("monolith") || lower.Contains("cairn") || lower.Contains("standing stone") ||
+               lower.Contains("tree") || lower.Contains("oak") || lower.Contains("pine") ||
+               lower.Contains("boulder") || lower.Contains("cliff") || lower.Contains("outcrop") ||
+               lower.Contains("pool") || lower.Contains("pond") || lower.Contains("lake") ||
+               lower.Contains("waterfall") || lower.Contains("stream") || lower.Contains("river") ||
+               lower.Contains("path") || lower.Contains("trail") || lower.Contains("road") ||
+               lower.Contains("wall") || lower.Contains("fence") || lower.Contains("rampart") ||
+               lower.Contains("entrance") || lower.Contains("exit") || lower.Contains("passage");
+    }
 
     private static void ApplyEffect(PlayerStats stats, string effect)
     {
