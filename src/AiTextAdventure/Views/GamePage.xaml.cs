@@ -41,6 +41,7 @@ public partial class GamePage : ContentPage
     {
         base.OnAppearing();
         _sidebarViewModel.MapInvalidated += OnMapInvalidated;
+        _sidebarViewModel.EventsPanel.Subscribe(); // resubscribe in case Unsubscribe was called
         await _gameViewModel.InitializeAsync();
     }
 

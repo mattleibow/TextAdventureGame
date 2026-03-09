@@ -176,4 +176,11 @@ public partial class EventsPanelViewModel : ObservableObject
         });
 
     public void Unsubscribe() => _eventStream.EventEmitted -= OnEventEmitted;
+
+    /// <summary>Re-subscribes after Unsubscribe was called (e.g., page re-appears without re-creation).</summary>
+    public void Subscribe()
+    {
+        _eventStream.EventEmitted -= OnEventEmitted; // prevent double-subscription
+        _eventStream.EventEmitted += OnEventEmitted;
+    }
 }
