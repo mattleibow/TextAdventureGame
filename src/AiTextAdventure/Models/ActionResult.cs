@@ -1,30 +1,55 @@
+using System.ComponentModel;
+using System.Text.Json.Serialization;
+
 namespace AiTextAdventure.Models;
 
 /// <summary>
 /// Structured state changes returned by the ActionResolver agent.
-/// Parsed from AI JSON response and applied to the database.
+/// Applied to the database after each player action.
 /// </summary>
+[Description("State changes that result from the player's action this turn. Only include changes that clearly happened — use empty lists when nothing changed.")]
 public class ActionResult
 {
-    /// <summary>Items the player picked up this turn.</summary>
+    [Description("Items the player explicitly picked up this turn. Empty if the player did not pick up anything.")]
     public List<PickedUpItem> ItemsPickedUp { get; set; } = [];
-    /// <summary>Item names dropped this turn (return to world entities).</summary>
+
+    [Description("Names of items the player explicitly dropped this turn. Empty if nothing was dropped.")]
     public List<string> ItemsDropped { get; set; } = [];
-    /// <summary>If the player moved, the new location name. Null if no movement.</summary>
+
+    [Description("If the player moved to a new named location, the location name. Null if no movement occurred.")]
     public string? LocationChanged { get; set; }
-    /// <summary>Entity names to remove from WorldState.KnownEntities.</summary>
+
+    [Description("Names of entities or items to remove from the world (e.g. consumed, destroyed). Empty if nothing was removed.")]
     public List<string> EntitiesRemoved { get; set; } = [];
-    /// <summary>New entity names to add to WorldState.KnownEntities (e.g. after discovering something).</summary>
+
+    [Description("New entities or items that appeared in the world this turn (e.g. something discovered). Empty if nothing new appeared.")]
     public List<string> NewEntities { get; set; } = [];
-    /// <summary>
-    /// Movement direction detected from player input.
-    /// Values: "north","south","east","west","northeast","northwest","southeast","southwest" or null.
-    /// </summary>
-    public string? MovementDirection { get; set; }
+
+    [Description("The cardinal direction the player moved, if any movement occurred. Null if no movement.")]
+    public MovementDirection? MovementDirection { get; set; }
 }
 
+[Description("An item the player picked up, with its name and a short description.")]
 public class PickedUpItem
 {
+    [Description("Exact name of the item as it appears in the world item list.")]
     public string ItemName { get; set; } = "";
+
+    [Description("Brief description of the item (1 sentence).")]
     public string Description { get; set; } = "";
 }
+
+/// <summary>Cardinal movement directions a player can travel.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<MovementDirection>))]
+public enum MovementDirection
+{
+    [JsonStringEnumMemberName("north")]     North,
+    [JsonStringEnumMemberName("south")]     South,
+    [JsonStringEnumMemberName("east")]      East,
+    [JsonStringEnumMemberName("west")]      West,
+    [JsonStringEnumMemberName("northeast")] Northeast,
+    [JsonStringEnumMemberName("northwest")] Northwest,
+    [JsonStringEnumMemberName("southeast")] Southeast,
+    [JsonStringEnumMemberName("southwest")] Southwest,
+}
+

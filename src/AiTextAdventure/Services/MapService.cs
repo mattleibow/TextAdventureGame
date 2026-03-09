@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
@@ -18,17 +19,23 @@ public class MapService(
     EventStream eventStream,
     ILogger<MapService> logger)
 {
-    // Kept very short for Apple Intelligence's small context window
+    // Kept very short for Apple Intelligence's small context window.
+    // Biome values must match the BiomeKind enum string members exactly (lowercase).
     private const string TileGenSystemPrompt = """
-        Output ONLY valid JSON (no markdown, no explanation):
-        {"Biome":"forest","LocationName":"Name","Description":"1 evocative sentence.","Atmosphere":"brief mood phrase","Features":["large obvious thing"],"HiddenItems":["healing item","food item","weapon","armor/protection","danger creature or trap"]}
-        Rules:
-        - Biome MUST be geographically compatible with neighbours given.
-        - Valid biomes: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra.
-        - Transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins.
-        - Features: 1-2 large IMMOVABLE landmarks (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, tree, rock, pool). These CANNOT be picked up.
-        - HiddenItems: exactly 5 PORTABLE items a player can pick up (healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, venomous creature/trap). Never landmarks.
-        - Never use "item1", "feature1". Farther from start = more dangerous/exotic.
+        Output ONLY valid JSON with no markdown fences, no explanation, no extra text.
+        Schema: {"Biome":"forest","LocationName":"Evocative Name","Description":"One vivid sentence.","Atmosphere":"brief mood","Features":["immovable landmark"],"HiddenItems":["healing item","food item","weapon","armor item","dangerous creature or trap"]}
+        Biome rules:
+        - Choose from: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra
+        - Must be geographically compatible with any neighbours listed
+        - Transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins
+        Features rules:
+        - 1-2 large IMMOVABLE landmarks only (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, ancient tree, boulder, pool)
+        - Player can EXAMINE but NOT pick these up
+        HiddenItems rules:
+        - Exactly 5 PORTABLE items the player can pick up
+        - One each of: healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, venomous creature/trap
+        - Use specific evocative names, never "item1" or "feature1"
+        - Farther from origin (Dist) = more dangerous/exotic
         """;
 
     // Direction → (dx, dy) mapping
@@ -272,26 +279,31 @@ public class MapService(
                 userPrompt,
                 $"[System]\n{TileGenSystemPrompt}\n\n[User]\n{userPrompt}"));
 
-            // Structured output: the library enforces the JSON schema and deserializes for us,
-            // eliminating manual parsing and tolerating minor format variations from the model.
-            var response = await chatClient.GetResponseAsync<MapTile>(
-                messages, GameJsonContext.Default.Options, cancellationToken: ct);
+            // Use structured output with TileGenResponse DTO (has [Description] attrs + BiomeKind enum).
+            // useJsonSchemaResponseFormat:false because Apple Intelligence ignores the ResponseFormat
+            // constraint and may fail if the mode is unsupported. The system prompt handles schema
+            // communication instead.
+            var tileData = await GetStructuredAsync(
+                messages, GameJsonContext.Default.TileGenResponse, ct,
+                label: $"TileGen ({x},{y})");
 
-            var rawJson = response.RawRepresentation?.ToString() ?? response.Messages.LastOrDefault()?.Text ?? "";
-            eventStream.Emit(new AgentEvent($"💬 TileGen response ({x},{y})", "WorldGen", AgentEventKind.Response,
-                rawJson[..Math.Min(60, rawJson.Length)],
-                rawJson));
-
-            if (response.TryGetResult(out var tile) && tile is not null && !string.IsNullOrEmpty(tile.LocationName))
+            if (tileData is not null && !string.IsNullOrEmpty(tileData.LocationName))
             {
-                tile.Id = Guid.NewGuid();
-                tile.SaveSlotId = saveSlotId;
-                tile.X = x;
-                tile.Y = y;
-                tile.DiscoveredAt = DateTime.UtcNow;
-                tile.Biome = ValidateBiome(tile.Biome, existing, x, y);
-                tile.HiddenItems = SanitizeList(tile.HiddenItems, DefaultHiddenItems(tile.Biome));
-                tile.Features = SanitizeList(tile.Features, ["ancient stone", "weathered tree"]);
+                var biomeStr = tileData.Biome.ToString().ToLowerInvariant();
+                var tile = new MapTile
+                {
+                    Id = Guid.NewGuid(),
+                    SaveSlotId = saveSlotId,
+                    X = x,
+                    Y = y,
+                    DiscoveredAt = DateTime.UtcNow,
+                    Biome = ValidateBiome(biomeStr, existing, x, y),
+                    LocationName = tileData.LocationName,
+                    Description = tileData.Description,
+                    Atmosphere = tileData.Atmosphere,
+                    Features = SanitizeList(tileData.Features, ["ancient stone", "weathered tree"]),
+                    HiddenItems = SanitizeList(tileData.HiddenItems, DefaultHiddenItems(biomeStr)),
+                };
                 return tile;
             }
         }
@@ -302,6 +314,54 @@ public class MapService(
         }
 
         return FallbackTile(saveSlotId, x, y);
+    }
+
+    /// <summary>
+    /// Calls GetResponseAsync&lt;T&gt; with useJsonSchemaResponseFormat:false (Apple Intelligence
+    /// compatibility) and falls back to manual markdown-stripped deserialization if TryGetResult fails.
+    /// Emits a Response event with the raw text.
+    /// </summary>
+    private async Task<T?> GetStructuredAsync<T>(
+        IEnumerable<ChatMessage> messages,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo,
+        CancellationToken ct,
+        string label = "AI")
+        where T : class
+    {
+        // Pass serializerOptions so the extension can generate a JSON schema for the prompt,
+        // but disable ResponseFormat injection (useJsonSchemaResponseFormat:false) because
+        // Apple Intelligence doesn't support that constraint.
+        var response = await chatClient.GetResponseAsync<T>(
+            messages, GameJsonContext.Default.Options,
+            useJsonSchemaResponseFormat: false,
+            cancellationToken: ct);
+
+        var rawText = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+        eventStream.Emit(new AgentEvent($"💬 {label} response", "WorldGen", AgentEventKind.Response,
+            rawText[..Math.Min(60, rawText.Length)],
+            rawText));
+
+        // Primary: use the library's built-in deserialization
+        if (response.TryGetResult(out var result) && result is not null)
+            return result;
+
+        // Fallback: strip any markdown fences and try manual deserialization
+        logger.LogWarning("{Label}: TryGetResult failed, attempting markdown-strip fallback", label);
+        var json = rawText;
+        if (json.Contains('{'))
+        {
+            var s = json.IndexOf('{');
+            var e = json.LastIndexOf('}');
+            if (s >= 0 && e > s)
+                json = json[s..(e + 1)];
+        }
+
+        try { return JsonSerializer.Deserialize(json, typeInfo); }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "{Label}: Fallback deserialization also failed. Raw: {Raw}", label, rawText[..Math.Min(200, rawText.Length)]);
+            return null;
+        }
     }
 
     private static string ValidateBiome(string biome, Dictionary<(int, int), MapTile> existing, int x, int y)

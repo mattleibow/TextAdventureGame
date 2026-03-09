@@ -14,6 +14,8 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(GameLocation))]
 [JsonSerializable(typeof(PlayerStats))]
 [JsonSerializable(typeof(MapTile))]
+[JsonSerializable(typeof(TileGenResponse))]
+[JsonSerializable(typeof(BiomeKind))]
 [JsonSerializable(typeof(PlayerAction))]
 [JsonSerializable(typeof(WorldGenResult))]
 [JsonSerializable(typeof(NpcDialogResult))]
@@ -26,6 +28,8 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(SuggestedAction))]
 [JsonSerializable(typeof(ActionResult))]
 [JsonSerializable(typeof(PickedUpItem))]
+[JsonSerializable(typeof(MovementDirection))]
+[JsonSerializable(typeof(MovementDirection?))]
 [JsonSerializable(typeof(List<PickedUpItem>))]
 [JsonSerializable(typeof(List<SaveSlot>))]
 [JsonSerializable(typeof(List<WorldState>))]
@@ -37,3 +41,4 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(List<MapTile>))]
 [JsonSerializable(typeof(List<SuggestedAction>))]
 public partial class GameJsonContext : JsonSerializerContext;
+

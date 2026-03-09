@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
@@ -238,11 +239,12 @@ public class GameOrchestrator(
                     new(ChatRole.User, suggContext)
                 };
                 var suggResp = await chatClient.GetResponseAsync<SuggestedActions>(
-                    suggMessages, GameJsonContext.Default.Options, cancellationToken: cancellationToken);
+                    suggMessages, GameJsonContext.Default.Options,
+                    useJsonSchemaResponseFormat: false,
+                    cancellationToken: cancellationToken);
                 var rawSugg = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-                suggestions = suggResp.TryGetResult(out var sugg) && sugg?.Actions?.Count > 0
-                    ? sugg.Actions
-                    : DefaultSuggestions(worldState);
+                suggestions = TryGetStructured(suggResp, rawSugg, GameJsonContext.Default.SuggestedActions)?.Actions
+                              is { Count: > 0 } acts ? acts : DefaultSuggestions(worldState);
 
                 eventStream.Emit(new AgentEvent("💬 Suggestion response", "Suggestion", AgentEventKind.Response,
                     $"{suggestions.Count} actions", rawSugg));
@@ -299,14 +301,17 @@ public class GameOrchestrator(
             };
 
             var resolverResp = await chatClient.GetResponseAsync<ActionResult>(
-                resolverMessages, GameJsonContext.Default.Options, cancellationToken: cancellationToken);
+                resolverMessages, GameJsonContext.Default.Options,
+                useJsonSchemaResponseFormat: false,
+                cancellationToken: cancellationToken);
             var resolverJson = resolverResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
 
             eventStream.Emit(new AgentEvent("💬 Resolver response", "ActionResolver", AgentEventKind.Response,
                 resolverJson[..Math.Min(60, resolverJson.Length)],
                 resolverJson));
 
-            if (!resolverResp.TryGetResult(out var result) || result is null)
+            var result = TryGetStructured(resolverResp, resolverJson, GameJsonContext.Default.ActionResult);
+            if (result is null)
             {
                 eventStream.Emit(new AgentEvent("No state changes", "ActionResolver", AgentEventKind.AgentCompleted));
                 return;
@@ -595,6 +600,33 @@ public class GameOrchestrator(
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts a typed result from a ChatResponse&lt;T&gt;, falling back to manual markdown-stripped
+    /// JSON deserialization if TryGetResult fails. Apple Intelligence sometimes wraps JSON in
+    /// markdown fences which breaks the default deserialization.
+    /// </summary>
+    private static T? TryGetStructured<T>(
+        ChatResponse<T> response,
+        string rawText,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo)
+        where T : class
+    {
+        if (response.TryGetResult(out var result) && result is not null)
+            return result;
+
+        // Fallback: extract JSON from possible markdown fences
+        var json = rawText;
+        if (json.Contains('{'))
+        {
+            var s = json.IndexOf('{');
+            var e = json.LastIndexOf('}');
+            if (s >= 0 && e > s) json = json[s..(e + 1)];
+        }
+
+        try { return JsonSerializer.Deserialize(json, typeInfo); }
+        catch { return null; }
+    }
 
     private static bool IsLookAroundAction(string input)
     {
