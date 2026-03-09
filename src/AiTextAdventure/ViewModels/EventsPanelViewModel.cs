@@ -23,10 +23,10 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 
     // For turn headers: IsExpanded = whether this turn's events are visible.
     // Toggled by tapping the header. When toggled, calls OnToggle (set by EventsPanelViewModel).
-    // For regular events: IsExpanded = whether the full-content panel is shown.
+    // For regular events: IsExpanded = whether the full-content panel is shown (starts collapsed).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandIcon), nameof(IsExpandedContent))]
-    private bool isExpanded = true;
+    private bool isExpanded = evt.Kind == AgentEventKind.TurnStart;
 
     /// <summary>
     /// Callback invoked when this item is tapped.
