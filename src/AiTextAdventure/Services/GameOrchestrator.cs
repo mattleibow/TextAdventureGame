@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
@@ -238,12 +237,15 @@ public class GameOrchestrator(
                     new(ChatRole.System, SuggestionSystemPrompt),
                     new(ChatRole.User, suggContext)
                 };
-                var suggResp = await chatClient.GetResponseAsync(suggMessages, cancellationToken: cancellationToken);
-                var suggText = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-                suggestions = ParseSuggestions(suggText);
+                var suggResp = await chatClient.GetResponseAsync<SuggestedActions>(
+                    suggMessages, GameJsonContext.Default.Options, cancellationToken: cancellationToken);
+                var rawSugg = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+                suggestions = suggResp.TryGetResult(out var sugg) && sugg?.Actions?.Count > 0
+                    ? sugg.Actions
+                    : DefaultSuggestions(worldState);
 
                 eventStream.Emit(new AgentEvent("💬 Suggestion response", "Suggestion", AgentEventKind.Response,
-                    $"{suggestions.Count} actions", suggText));
+                    $"{suggestions.Count} actions", rawSugg));
                 logger.LogInformation("Suggestions: {Count}", suggestions.Count);
                 eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput));
             }
@@ -296,22 +298,15 @@ public class GameOrchestrator(
                 new(ChatRole.User, userCtx)
             };
 
-            var resolverResp = await chatClient.GetResponseAsync(resolverMessages, cancellationToken: cancellationToken);
+            var resolverResp = await chatClient.GetResponseAsync<ActionResult>(
+                resolverMessages, GameJsonContext.Default.Options, cancellationToken: cancellationToken);
             var resolverJson = resolverResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
 
             eventStream.Emit(new AgentEvent("💬 Resolver response", "ActionResolver", AgentEventKind.Response,
                 resolverJson[..Math.Min(60, resolverJson.Length)],
                 resolverJson));
 
-            if (resolverJson.Contains("```"))
-            {
-                var s = resolverJson.IndexOf('{');
-                var e = resolverJson.LastIndexOf('}');
-                if (s >= 0 && e > s) resolverJson = resolverJson[s..(e + 1)];
-            }
-
-            var result = JsonSerializer.Deserialize(resolverJson, GameJsonContext.Default.ActionResult);
-            if (result is null)
+            if (!resolverResp.TryGetResult(out var result) || result is null)
             {
                 eventStream.Emit(new AgentEvent("No state changes", "ActionResolver", AgentEventKind.AgentCompleted));
                 return;
@@ -614,19 +609,6 @@ public class GameOrchestrator(
     {
         if (w is null) return "Location: unknown.";
         return $"[{w.CurrentBiome.ToUpperInvariant()} — {w.CurrentLocation}]\nAn area in the {w.CurrentBiome}.";
-    }
-
-    private static List<SuggestedAction> ParseSuggestions(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return DefaultSuggestions();
-        try
-        {
-            if (json.Contains("```")) { var s = json.IndexOf('{'); var e = json.LastIndexOf('}'); if (s >= 0 && e > s) json = json[s..(e + 1)]; }
-            var parsed = JsonSerializer.Deserialize(json, GameJsonContext.Default.SuggestedActions);
-            if (parsed?.Actions is { Count: > 0 }) return parsed.Actions;
-        }
-        catch { }
-        return DefaultSuggestions();
     }
 
     private static List<SuggestedAction> DefaultSuggestions(WorldState? worldState = null)

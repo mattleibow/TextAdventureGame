@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
@@ -273,25 +272,22 @@ public class MapService(
                 userPrompt,
                 $"[System]\n{TileGenSystemPrompt}\n\n[User]\n{userPrompt}"));
 
-            var response = await chatClient.GetResponseAsync(messages, cancellationToken: ct);
-            var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            // Structured output: the library enforces the JSON schema and deserializes for us,
+            // eliminating manual parsing and tolerating minor format variations from the model.
+            var response = await chatClient.GetResponseAsync<MapTile>(
+                messages, GameJsonContext.Default.Options, cancellationToken: ct);
 
+            var rawJson = response.RawRepresentation?.ToString() ?? response.Messages.LastOrDefault()?.Text ?? "";
             eventStream.Emit(new AgentEvent($"💬 TileGen response ({x},{y})", "WorldGen", AgentEventKind.Response,
-                json[..Math.Min(60, json.Length)],
-                json));
+                rawJson[..Math.Min(60, rawJson.Length)],
+                rawJson));
 
-            if (json.Contains("```"))
+            if (response.TryGetResult(out var tile) && tile is not null && !string.IsNullOrEmpty(tile.LocationName))
             {
-                var s = json.IndexOf('{');
-                var e = json.LastIndexOf('}');
-                if (s >= 0 && e > s) json = json[s..(e + 1)];
-            }
-
-            // Parse using JsonDocument to handle the AI sometimes returning objects
-            // inside arrays instead of plain strings (e.g. Features:[{"name":"..."}] vs Features:["..."])
-            var tile = ParseTileFromJson(json, saveSlotId, x, y);
-            if (tile is not null && !string.IsNullOrEmpty(tile.LocationName))
-            {
+                tile.Id = Guid.NewGuid();
+                tile.SaveSlotId = saveSlotId;
+                tile.X = x;
+                tile.Y = y;
                 tile.DiscoveredAt = DateTime.UtcNow;
                 tile.Biome = ValidateBiome(tile.Biome, existing, x, y);
                 tile.HiddenItems = SanitizeList(tile.HiddenItems, DefaultHiddenItems(tile.Biome));
@@ -306,84 +302,6 @@ public class MapService(
         }
 
         return FallbackTile(saveSlotId, x, y);
-    }
-
-    /// <summary>
-    /// Parses a MapTile from AI-generated JSON, tolerating the model returning arrays of objects
-    /// instead of arrays of strings (e.g. Features: [{"name":"altar"}] → ["altar"]).
-    /// Uses JsonDocument for element-level control rather than typed deserialization.
-    /// </summary>
-    private static MapTile? ParseTileFromJson(string json, Guid saveSlotId, int x, int y)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            var tile = new MapTile
-            {
-                Id = Guid.NewGuid(),
-                SaveSlotId = saveSlotId,
-                X = x,
-                Y = y,
-            };
-
-            if (root.TryGetProperty("Biome", out var biome))
-                tile.Biome = biome.GetString() ?? "forest";
-            if (root.TryGetProperty("LocationName", out var name))
-                tile.LocationName = name.GetString() ?? "";
-            if (root.TryGetProperty("Description", out var desc))
-                tile.Description = desc.GetString() ?? "";
-            if (root.TryGetProperty("Atmosphere", out var atmo))
-                tile.Atmosphere = atmo.GetString() ?? "";
-
-            tile.Features   = ExtractStringList(root, "Features");
-            tile.HiddenItems = ExtractStringList(root, "HiddenItems");
-
-            return tile;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Extracts a List&lt;string&gt; from a JSON array property that may contain either
-    /// plain strings or objects (in which case we try common string-ish fields: name, Name, value, text, description).
-    /// </summary>
-    private static List<string> ExtractStringList(JsonElement root, string propertyName)
-    {
-        var result = new List<string>();
-        if (!root.TryGetProperty(propertyName, out var arr) || arr.ValueKind != JsonValueKind.Array)
-            return result;
-
-        foreach (var elem in arr.EnumerateArray())
-        {
-            switch (elem.ValueKind)
-            {
-                case JsonValueKind.String:
-                    var s = elem.GetString();
-                    if (!string.IsNullOrWhiteSpace(s)) result.Add(s!);
-                    break;
-
-                case JsonValueKind.Object:
-                    // AI returned an object — try common name fields
-                    string? extracted = null;
-                    foreach (var key in new[] { "name", "Name", "value", "Value", "text", "Text", "description", "Description" })
-                    {
-                        if (elem.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.String)
-                        {
-                            extracted = val.GetString();
-                            if (!string.IsNullOrWhiteSpace(extracted)) break;
-                        }
-                    }
-                    if (!string.IsNullOrWhiteSpace(extracted)) result.Add(extracted!);
-                    break;
-            }
-        }
-        return result;
     }
 
     private static string ValidateBiome(string biome, Dictionary<(int, int), MapTile> existing, int x, int y)
