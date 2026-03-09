@@ -108,7 +108,7 @@ Every item has an optional effect applied when used or equipped:
 - **Equip / Wield / Wear / Put on** — for weapons and armour
   - Example: "equip the carved bone hunting knife"
 
-Consumables are removed from inventory after use.
+The AI Game Master interprets your intent and calls the appropriate `use_item` or `equip_item` tool. Consumables are removed from inventory after use.
 
 ### Pockets Tab
 
@@ -180,7 +180,7 @@ Type directional commands to move:
 - "walk north" / "head east" / "move south"
 - Or just "north", "south", etc.
 
-Movement is detected client-side without an AI call, so it is instant. New tiles are generated if you enter an unexplored area.
+The AI Game Master interprets your intent and calls the `move_player` tool, which updates your position and generates new tiles as needed.
 
 ---
 
@@ -211,7 +211,7 @@ Below the narrative text, the game shows **3 suggested action buttons** generate
 - "Pick up [item]" if items are visible
 - "Examine [landmark]" for interesting features
 
-You can also type any free-form action in the input box and press **Send** (or Enter).
+The AI generates these suggestions at the end of each narrative response. You can also type any free-form action in the input box and press **Send** (or Enter).
 
 ---
 

@@ -119,7 +119,6 @@ public class GameTools(
         try
         {
             var (newTile, newState) = await mapService.MovePlayer(saveSlotId, worldState, direction, gameName, cancellationToken);
-            await worldStateService.SaveState(newState, cancellationToken);
 
             newState.RecentEvents ??= [];
             newState.RecentEvents.Add($"moved {direction} to {newTile.LocationName}");

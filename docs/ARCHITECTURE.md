@@ -22,6 +22,322 @@ Technical implementation reference for the AI Text Adventure game.
 
 ```
 AiTextAdventure.slnx
+└── src/AiTextAdventure/              # Main MAUI project
+    ├── Models/
+    │   ├── Documents/               # Persisted document types
+    │   │   ├── SaveSlot.cs          # Save game metadata
+    │   │   ├── WorldState.cs        # Current location + entity snapshot
+    │   │   ├── PlayerStats.cs       # HP, hunger, tiredness, armour, gear
+    │   │   ├── InventoryItem.cs     # Held item with effect string
+    │   │   ├── JournalEntry.cs      # Narrative log entry
+    │   │   └── MapTile.cs           # Persistent world tile (X,Y coords)
+    │   ├── SuggestedActions.cs      # SuggestedAction record (label + action text)
+    │   ├── TileGenResponse.cs       # AI structured output DTO for tile generation
+    │   └── GameJsonContext.cs       # System.Text.Json source-gen context
+    ├── Services/
+    │   ├── GameMaster.cs            # AI Game Master — drives every turn via tool calling
+    │   ├── GameTools.cs             # 8 AI-callable tools (move, look, pick up, use, etc.)
+    │   ├── MapService.cs            # Tile generation (AI-powered), movement, reveal
+    │   ├── WorldStateService.cs     # DB helpers for WorldState/Stats/Inventory/Journal
+    │   ├── SaveSlotService.cs       # Save slot CRUD + cascade delete
+    │   └── Observability/
+    │       └── EventStream.cs       # In-process agent event bus
+    ├── ViewModels/
+    │   ├── MainMenuViewModel.cs     # Save slot list + new/delete/load
+    │   ├── GameViewModel.cs         # Turn input, narrative display, suggestions
+    │   └── SidebarViewModel.cs      # 5-tab sidebar (Status/Pockets/Journal/Map/Events)
+    ├── Views/
+    │   ├── MainMenuPage.xaml        # Save slot list UI
+    │   ├── GamePage.xaml            # Split-panel game UI
+    │   └── MapDrawable.cs           # IDrawable for MAUI Graphics map
+    └── MauiProgram.cs               # DI registration, IChatClient wiring
+```
+
+---
+
+## Database / Persistence
+
+### Shiny.SqliteDocumentDb
+
+The app uses `Shiny.SqliteDocumentDb` as a schema-free JSON document store on top of SQLite. Each document type is stored in its own table; documents are serialised as JSON blobs using `System.Text.Json`.
+
+**Registration** (`MauiProgram.cs`):
+```csharp
+services.AddSqliteDocumentStore(opts =>
+    opts.ConnectionString = $"Data Source={dbPath}");
+```
+
+### Document Types
+
+| Type | Key | Foreign Key | Description |
+|---|---|---|---|
+| `SaveSlot` | `slot.Id` | — | Game name, created/last-played timestamps |
+| `WorldState` | `worldState.Id` | `SaveSlotId` | Current biome, location, player position (X,Y), entity snapshot |
+| `PlayerStats` | `stats.Id` | `SaveSlotId` | HP, hunger, tiredness, armour, equipped slots |
+| `InventoryItem` | `item.Id` | `SaveSlotId` | Item name, description, effect string, consumable/equippable flags |
+| `JournalEntry` | `entry.Id` | `SaveSlotId` | Narrative text, timestamp, entry type |
+| `MapTile` | `tile.Id` | `SaveSlotId` | X/Y coord, biome, description, features, hidden items, visited/revealed |
+
+### Known Quirks
+
+**Guid comparison in LINQ queries fails silently.**
+`store.Query<T>(expr)` does not correctly translate Guid equality to SQL. Always use:
+```csharp
+var all = await store.GetAll<T>(JsonContext.Default.T, ct);
+var filtered = all.Where(x => x.SaveSlotId == id).ToList();
+```
+
+**Upsert requires explicit string key.**
+Use `store.Set(id.ToString(), doc, jsonTypeInfo, ct)` for predictable upsert behaviour. Calling `store.Set(doc)` generates a new auto-key every time and does not update existing records.
+
+**System.Text.Json source generation required.**
+`GameJsonContext` (annotated with `[JsonSerializable]` for every type) must be passed to all `GetAll<T>` and `Set` calls for AOT compatibility on iOS/Mac Catalyst.
+
+### Cascade Delete
+
+`SaveSlotService.DeleteSaveSlot()` removes the save slot and all related documents:
+1. `SaveSlot` record
+2. `WorldState` matching `SaveSlotId`
+3. `PlayerStats` matching `SaveSlotId`
+4. `InventoryItem` records matching `SaveSlotId`
+5. `JournalEntry` records matching `SaveSlotId`
+6. `MapTile` records matching `SaveSlotId`
+
+---
+
+## AI Integration
+
+### IChatClient Abstraction
+
+All AI calls go through `Microsoft.Extensions.AI.IChatClient`. This decouples the app from any specific model provider.
+
+```csharp
+var response = await chatClient.GetResponseAsync(messages, options, ct);
+var text = response.Messages.LastOrDefault()?.Text?.Trim();
+```
+
+### AppleIntelligenceChatClient
+
+`Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient` wraps Apple's on-device Foundation Models framework. Registered directly in `MauiProgram.cs` — the app **only supports Apple platforms**. On Android/Windows a `PlatformNotSupportedException` is thrown at startup.
+
+```csharp
+// MauiProgram.cs
+#if IOS || MACCATALYST
+IChatClient raw = new Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient();
+return raw.AsBuilder()
+    .UseLogging(loggerFactory)
+    .UseFunctionInvocation()   // handles the tool-call loop automatically
+    .Build();
+#else
+throw new PlatformNotSupportedException("Requires Apple Intelligence");
+#endif
+```
+
+`UseFunctionInvocation()` is critical — it enables the tool-calling loop where the AI can call tools, receive results, and continue reasoning before producing its final response.
+
+Context window: **~2,000 tokens**. All prompts are kept very short. Each prompt targets < 300 characters of user context.
+
+Apple Intelligence has a content safety filter that may refuse some prompts. The Game Master treats failures as non-fatal and returns a short error message.
+
+---
+
+## Game Master — Tool-Calling Architecture
+
+`GameMaster` runs every player turn using a single AI call with `ChatOptions.Tools`. The AI is given a set of tools and a system prompt that describes its role. It freely calls tools to read state, execute actions, and write back results — then narrates what happened.
+
+### Turn Flow
+
+```
+Player Input ("pick up the sword")
+    │
+    ▼
+GameMaster.ProcessTurnAsync
+    │
+    ├─ Create GameTools instance (scoped to this save slot)
+    │
+    ├─ Build messages:
+    │       [System] GameMasterSystemPrompt
+    │       [User]   player input text
+    │
+    ├─ chatClient.GetResponseAsync(messages, ChatOptions { Tools = gameTools })
+    │       │
+    │       │  ← UseFunctionInvocation() middleware manages this loop:
+    │       ├─ AI calls get_world_state()
+    │       │       └─ Returns location, items, stats, inventory
+    │       ├─ AI calls pick_up_item("weathered iron sword", "...", "weapon:15")
+    │       │       └─ Adds to InventoryItem in DB, removes from tile
+    │       └─ AI produces final narrative response
+    │
+    ├─ ParseTurnResponse(text)
+    │       └─ Splits on "SUGGESTIONS:" → narrative + [{Label, ActionText}]
+    │
+    ├─ ApplyStatDecayAsync  (automatic per-turn mechanic — not an AI decision)
+    │
+    └─ Returns GameTurnResult { Narrative, Suggestions }
+```
+
+The AI is the **sole decision-maker**. It reads world state via tools, decides what actions make sense, executes them, and narrates the result. No C# code makes game decisions.
+
+### Game Tools
+
+`GameTools` provides 8 AI-callable functions. Each is created with `AIFunctionFactory.Create()` and has a `[Description]` attribute to guide the AI's understanding.
+
+| Tool | Description |
+|---|---|
+| `get_world_state` | Returns location, visible items, inventory, stats, recent events |
+| `get_current_tile` | Returns tile description, biome, atmosphere |
+| `move_player(direction)` | Moves player in a compass direction, generates new tiles if needed |
+| `look_around` | Reveals hidden items in the current tile |
+| `pick_up_item(name, description, effect)` | Adds item to inventory, removes from tile |
+| `drop_item(name)` | Removes from inventory, returns to tile |
+| `use_item(name)` | Applies consumable effect (heal/food), removes from inventory |
+| `equip_item(name)` | Equips weapon or armor, updates PlayerStats |
+
+The AI provides the `effect` string for `pick_up_item` (e.g. `heal:30`, `weapon:15`, `poison:25`). Effect format:
+- `heal:N` — restores N HP when used
+- `food:N` — reduces hunger by N when used
+- `weapon:N` — equippable, N attack power
+- `armor:N` — equippable, N damage reduction
+- `poison:N` — venomous: damages on pickup, item is not stored
+
+### System Prompt
+
+```
+You are the Game Master of a text adventure. You control the world through your tools.
+
+When the player gives you an action:
+1. Call get_world_state to understand the current situation
+2. Execute the player's intent using the right tools
+3. Write a vivid 2-4 sentence narrative in second-person present tense
+4. End your response with: SUGGESTIONS: <action1> | <action2> | <action3>
+```
+
+### Response Format
+
+The AI's final text response contains the narrative followed by suggestions:
+```
+You draw the sword from its scabbard — the blade gleams in the dim light. 
+It feels well-balanced in your hand, a reminder that danger lurks ahead.
+
+SUGGESTIONS: Go north | Examine the altar | Use healing herb
+```
+
+`ParseTurnResponse()` splits on `"SUGGESTIONS:"` to extract the narrative and populate the suggestion buttons.
+
+---
+
+## Map System
+
+### MapService
+
+Responsible for all world map operations:
+
+| Method | Description |
+|---|---|
+| `GetTile(saveSlotId, x, y)` | Fetch a tile from DB (null if not generated) |
+| `GetAllTiles(saveSlotId)` | All tiles for map display |
+| `GenerateSurroundingTiles(saveSlotId, x, y, gameName)` | Generate 3×3 grid, skip existing tiles |
+| `MovePlayer(saveSlotId, worldState, direction, gameName)` | Move + generate new surroundings + sync WorldState |
+| `RevealTile(saveSlotId, x, y, worldState)` | Mark as revealed, move hidden items to KnownEntities |
+| `SyncTileToWorldState(worldState, tile)` | Copy tile data into WorldState snapshot |
+| `BuildTileContext(tile, isRevealed)` | Compact context string for AI (<300 chars) |
+
+### Tile Generation
+
+Tile generation uses `GetResponseAsync<TileGenResponse>()` with structured output. `TileGenResponse` uses `[Description]` attributes to guide the AI. The system prompt specifies biome compatibility rules, and biomes use a `BiomeKind` enum with `[JsonStringEnumMemberName]` for correct serialisation.
+
+Tiles fall back to biome-appropriate defaults if generation fails.
+
+### WorldState as Snapshot
+
+`WorldState` is a cached snapshot of the current tile's data, stored in the DB. It is re-synced from the tile on every move or reveal. The **authoritative source** for world data is `MapTile`; `WorldState` is a denormalised read cache.
+
+Fields:
+- `KnownEntities` — portable items (from `MapTile.HiddenItems` after reveal)
+- `LandmarkEntities` — inspect-only features (from `MapTile.Features`, always visible)
+- `HiddenEntities` — not-yet-revealed items (from `MapTile.HiddenItems` before reveal)
+- `PlayerX`, `PlayerY` — current tile coordinates
+
+---
+
+## Observability
+
+### EventStream
+
+An in-process publish/subscribe bus for AI agent events:
+
+```csharp
+eventStream.Emit(new AgentEvent("look_around", "GameMaster", AgentEventKind.ToolResult, detail));
+```
+
+`AgentEvent` has: `Title`, `AgentName`, `Kind`, optional `Detail` (short summary), optional `FullContent` (full prompt/response shown when expanded).
+
+Key event kinds emitted per turn:
+
+| Kind | When emitted |
+|---|---|
+| `AgentInvoked` | Before the AI call |
+| `Prompt` | System+user prompt text (📋 icon, blue) |
+| `Response` | Full AI response text (💬 icon, green) |
+| `ToolResult` | Tool invocation results (DB operations, tool outputs) |
+| `Error` | Any failure |
+| `WorkflowComplete` | End of turn |
+
+### Events Tab
+
+The 🔮 **Events** tab shows a live scrolling log of the AI's tool calls and reasoning. Each event is **collapsible**:
+- **Collapsed**: one-line summary (icon + agent name + title + timestamp)
+- **Expanded**: full content (prompt text, response, tool arguments) — tap to toggle
+
+---
+
+## MVVM Architecture
+
+### ViewModels
+
+| ViewModel | Responsibility |
+|---|---|
+| `MainMenuViewModel` | Lists save slots, creates/deletes/loads games |
+| `GameViewModel` | Handles player input, displays narrative, shows suggestions |
+| `SidebarViewModel` | 5-tab sidebar; loads WorldState, PlayerStats, Inventory, Journal, MapTiles |
+| `EventsPanelViewModel` | Subscribes to EventStream, maintains scrolling events list |
+
+All ViewModels use `CommunityToolkit.Mvvm`:
+- `[ObservableProperty]` for reactive properties
+- `[RelayCommand]` for commands
+- `ObservableCollection<T>` for list bindings
+
+### Compiled Bindings
+
+`GamePage.xaml` uses MAUI compiled bindings (`x:DataType`) for performance on iOS/Mac. Key rules:
+- `x:DataType` on the page root applies to the whole tree
+- Set `x:DataType` explicitly on nested elements (e.g. `DataTemplate`) when the type differs
+- Deep binding paths like `{Binding EventsPanel.Events}` fail silently — expose them as single-level properties on the ViewModel
+
+### CollectionView in ScrollView
+
+`CollectionView` inside `ScrollView` collapses to height 0 by default. Fixes:
+- Give `CollectionView` an explicit `HeightRequest`
+- Or restructure using `Grid` with `RowDefinitions="Auto,Auto,*"` where CollectionView gets `*`
+
+---
+
+## Known Limitations
+
+| Limitation | Impact | Workaround |
+|---|---|---|
+| Apple Intelligence context window (~2k tokens) | Long prompts are truncated silently | Keep all prompts short; tool results are compact strings |
+| Apple Intelligence content filter | May refuse action descriptions or narrative | Treat as non-fatal; return fallback message |
+| Shiny Guid LINQ bug | `store.Query<T>(x => x.Id == guid)` returns nothing | Always use `GetAll<T>()` + in-memory LINQ |
+| No multi-turn chat history | Each AI call is stateless; no memory of prior turns | WorldState + tile context provide grounding via `get_world_state` tool |
+| MapTile generation is sequential | Slow on first visit to a new area | Generation runs in background; subsequent moves are instant |
+
+---
+
+## Project Structure
+
+```
+AiTextAdventure.slnx
 ├── src/AiTextAdventure/              # Main MAUI project
 │   ├── Models/
 │   │   ├── Documents/               # Persisted document types
