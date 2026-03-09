@@ -13,7 +13,7 @@ public class PickUpItemTool(ToolContext ctx)
         string itemName,
         [Description("One evocative sentence describing what this item looks like.")]
         string description,
-        [Description("REQUIRED. The item's gameplay classification — analyze the item name and set this correctly. Weapons (swords, knives, axes, spears, bows, clubs, scimitars, rapiers) → 'weapon:15'. Armor and protection (shields, bracers, mail, cloaks, helms, pauldrons) → 'armor:10'. Healing items (potions, herbs, tonics, salves, vials) → 'heal:30'. Food (bread, jerky, meat, fruit, berries, rations) → 'food:25'. Trinkets, gems, artifacts, and decorative items → empty string ''. Use empty string ONLY for items with no combat or survival use.")]
+        [Description("REQUIRED. The item effect category. Choose one: 'weapon:15' for bladed or ranged arms. 'armor:10' for protective gear and clothing. 'heal:30' for potions, herbs, or salves. 'food:25' for rations or edible items. '' for gems, trinkets, or decorative artifacts.")]
         string effect,
         CancellationToken cancellationToken = default)
     {
@@ -31,22 +31,6 @@ public class PickUpItemTool(ToolContext ctx)
         {
             ctx.Logger.LogInformation("PickUpItem blocked — '{Item}' not in KnownEntities", itemName);
             return $"'{itemName}' is not in PORTABLE ITEMS for this location. Call get_world_state to see what can be picked up.";
-        }
-
-        // Poison/dangerous items: deal damage on contact but don't enter inventory
-        if (!string.IsNullOrEmpty(effect) && effect.StartsWith("poison", StringComparison.OrdinalIgnoreCase))
-        {
-            var dmgStats = await ctx.WorldStateService.GetPlayerStats(ctx.SaveSlotId, cancellationToken)
-                          ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = ctx.SaveSlotId };
-            ToolContext.ApplyEffect(dmgStats, effect);
-            await ctx.WorldStateService.SavePlayerStats(dmgStats, cancellationToken);
-
-            worldState.KnownEntities!.RemoveAll(e => e.Equals(match, StringComparison.OrdinalIgnoreCase));
-            await ctx.RemoveFromTile(worldState, match, cancellationToken);
-            await ctx.SaveRecentEvent(worldState, $"touched {match} — took damage!", cancellationToken);
-
-            ctx.EmitToolResult("☠️", $"poison: {match}", $"HP: {dmgStats.Health}/{dmgStats.MaxHealth} — {match} was dangerous!");
-            return $"You reach for {match} — it bites! Venomous. You take damage. HP: {dmgStats.Health}/{dmgStats.MaxHealth}. It falls away.";
         }
 
         // Normal pickup: add to inventory

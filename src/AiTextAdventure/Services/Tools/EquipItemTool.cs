@@ -6,7 +6,7 @@ namespace AiTextAdventure.Services.Tools;
 
 public class EquipItemTool(ToolContext ctx)
 {
-    [Description("Equip a weapon or armor from the player's inventory as active gear. Weapons increase combat effectiveness; armor reduces incoming damage. Item remains in inventory after equipping.")]
+    [Description("Equip an item from the player's inventory. Equipping a weapon adds its bonus to attack; equipping armor adds its bonus to defense. The item remains in inventory after equipping.")]
     public async Task<string> EquipItem(
         [Description("The exact item name of the weapon or armor from the INVENTORY list in get_world_state. Copy verbatim.")]
         string itemName,

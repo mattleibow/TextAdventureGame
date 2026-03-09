@@ -45,8 +45,8 @@ public class GameMaster(
            - "drop", "put down", "discard" → call drop_item
            - "eat", "drink", "use", "consume" → call use_item
            - "equip", "wield", "wear" → call equip_item
-        4. Write a vivid 2-4 sentence narrative in second-person present tense.
-           React to what the tools returned. Be atmospheric and specific.
+        4. Write an atmospheric 2-4 sentence narrative in second-person present tense.
+           React to what the tools returned. Focus on sights, sounds, and smells.
 
         CRITICAL RULES:
         - Call pick_up_item when the player wants to pick something up. NEVER narrate picking up without calling pick_up_item.
@@ -103,7 +103,7 @@ public class GameMaster(
             _ = mapService.GenerateSurroundingTiles(saveSlotId, worldState.PlayerX, worldState.PlayerY, gameName, ct);
         }
 
-        return await ProcessTurnAsync(saveSlotId, "Describe the opening scene vividly.", ct);
+        return await ProcessTurnAsync(saveSlotId, "Describe the opening scene. Focus on atmosphere, sights, and sounds.", ct);
     }
 
     public async Task<GameTurnResult> ProcessTurnAsync(Guid saveSlotId, string playerInput, CancellationToken ct = default)

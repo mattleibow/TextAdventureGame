@@ -24,7 +24,7 @@ public class MapService(
         Valid biomes: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra.
         Biome transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins.
         Features are 1-2 large IMMOVABLE landmarks (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, ancient tree, boulder, pool). Players can examine but not pick them up.
-        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, mystic trinket/gem/artifact.
+        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: healing salve or herbal remedy, travel ration or dried provisions, a blade or cutting tool, a protective garment or light shield, a mystical gem or carved trinket.
         Use specific evocative names. Farther from origin (Dist) = more exotic/rare.
         """;
 
