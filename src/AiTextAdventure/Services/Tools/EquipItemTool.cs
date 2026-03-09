@@ -19,14 +19,17 @@ public class EquipItemTool(ToolContext ctx)
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
         if (invItem is null) return $"'{itemName}' is not in your inventory.";
-        if (!invItem.IsEquippable)
-            return $"'{itemName}' cannot be equipped. If it is food or a potion, use use_item instead.";
+        var isWeapon = invItem.IsEquippable && invItem.Effect.StartsWith("weapon", StringComparison.OrdinalIgnoreCase);
+        var isArmor  = invItem.IsEquippable && invItem.Effect.StartsWith("armor", StringComparison.OrdinalIgnoreCase);
+
+        if (!isWeapon && !isArmor)
+            return $"'{itemName}' cannot be equipped. It may have been picked up without a weapon/armor effect set. Try dropping it and picking it up again, or use use_item if it's consumable.";
 
         var stats = await ctx.WorldStateService.GetPlayerStats(ctx.SaveSlotId, cancellationToken)
                    ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = ctx.SaveSlotId };
 
         string resultMsg;
-        if (invItem.Effect.StartsWith("weapon", StringComparison.OrdinalIgnoreCase))
+        if (isWeapon)
         {
             stats.EquippedWeapon = invItem.ItemName;
             resultMsg = $"You equip the {invItem.ItemName} as your weapon.";

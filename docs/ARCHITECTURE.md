@@ -36,7 +36,17 @@ AiTextAdventure.slnx
     │   └── GameJsonContext.cs       # System.Text.Json source-gen context
     ├── Services/
     │   ├── GameMaster.cs            # AI Game Master — drives every turn via tool calling
-    │   ├── GameTools.cs             # 8 AI-callable tools (move, look, pick up, use, etc.)
+    │   ├── Tools/                   # One file per AI-callable tool
+    │   │   ├── ToolContext.cs       # Shared context + helpers (ApplyEffect, RemoveFromTile, SaveRecentEvent)
+    │   │   ├── ToolRegistry.cs      # Assembles all AITool instances for ChatOptions.Tools
+    │   │   ├── GetWorldStateTool.cs # Returns location, items, stats, inventory
+    │   │   ├── GetCurrentTileTool.cs# Returns tile description and atmosphere
+    │   │   ├── MovePlayerTool.cs    # Moves player, generates new tiles
+    │   │   ├── LookAroundTool.cs    # Reveals hidden items in current tile
+    │   │   ├── PickUpItemTool.cs    # Adds item to inventory, removes from tile
+    │   │   ├── DropItemTool.cs      # Removes from inventory, returns to tile
+    │   │   ├── UseItemTool.cs       # Applies consumable effect, removes item
+    │   │   └── EquipItemTool.cs     # Sets weapon/armor in PlayerStats
     │   ├── MapService.cs            # Tile generation (AI-powered), movement, reveal
     │   ├── WorldStateService.cs     # DB helpers for WorldState/Stats/Inventory/Journal
     │   ├── SaveSlotService.cs       # Save slot CRUD + cascade delete
@@ -159,17 +169,21 @@ GameMaster.ProcessTurnAsync
     │       [System] GameMasterSystemPrompt
     │       [User]   player input text
     │
-    ├─ chatClient.GetResponseAsync(messages, ChatOptions { Tools = gameTools })
+    ├─ chatClient.GetResponseAsync(messages, ChatOptions { Tools = toolRegistry.GetAllTools() })
     │       │
     │       │  ← UseFunctionInvocation() middleware manages this loop:
     │       ├─ AI calls get_world_state()
     │       │       └─ Returns location, items, stats, inventory
+    │       ├─ AI calls get_current_tile()
+    │       │       └─ Returns tile description, atmosphere
     │       ├─ AI calls pick_up_item("weathered iron sword", "...", "weapon:15")
     │       │       └─ Adds to InventoryItem in DB, removes from tile
-    │       └─ AI produces final narrative response
+    │       └─ AI produces final narrative (plain text)
     │
-    ├─ ParseTurnResponse(text)
-    │       └─ Splits on "SUGGESTIONS:" → narrative + [{Label, ActionText}]
+    ├─ Phase 2: GetResponseAsync<SuggestedActions>(suggMessages)
+    │       └─ Structured output — no parsing, typed SuggestedActions returned
+    │          SuggestedActions has [Description] attrs that guide the schema
+    │          suggMessages = [System: SuggestionSystemPrompt] + [User: compact world context]
     │
     ├─ ApplyStatDecayAsync  (automatic per-turn mechanic — not an AI decision)
     │
@@ -188,41 +202,51 @@ The AI is the **sole decision-maker**. It reads world state via tools, decides w
 | `get_current_tile` | Returns tile description, biome, atmosphere |
 | `move_player(direction)` | Moves player in a compass direction, generates new tiles if needed |
 | `look_around` | Reveals hidden items in the current tile |
-| `pick_up_item(name, description, effect)` | Adds item to inventory, removes from tile |
+| `pick_up_item(name, description, effect)` | Adds item to inventory, removes from tile. AI must set `effect` |
 | `drop_item(name)` | Removes from inventory, returns to tile |
 | `use_item(name)` | Applies consumable effect (heal/food), removes from inventory |
 | `equip_item(name)` | Equips weapon or armor, updates PlayerStats |
 
-The AI provides the `effect` string for `pick_up_item` (e.g. `heal:30`, `weapon:15`, `poison:25`). Effect format:
+The `effect` parameter in `pick_up_item` is critical — the AI sets it when picking up:
 - `heal:N` — restores N HP when used
 - `food:N` — reduces hunger by N when used
 - `weapon:N` — equippable, N attack power
 - `armor:N` — equippable, N damage reduction
-- `poison:N` — venomous: damages on pickup, item is not stored
+- `poison:N` — venomous: damages on contact, item is not stored
 
-### System Prompt
+The `[Description]` on each tool method and parameter controls what the AI understands about when and how to use each tool. These are read by `AIFunctionFactory.Create()` via reflection and embedded in the function schema sent to the model.
 
+### System Prompts
+
+**Phase 1 (tool calling)** — `GameMasterSystemPrompt`:
 ```
-You are the Game Master of a text adventure. You control the world through your tools.
+You are the Game Master of a text adventure. You have tools to read and change the game world.
+When the player gives you an action: call get_world_state first, then execute the intent,
+then write a vivid 2-4 sentence narrative in second-person present tense.
+```
 
-When the player gives you an action:
-1. Call get_world_state to understand the current situation
-2. Execute the player's intent using the right tools
-3. Write a vivid 2-4 sentence narrative in second-person present tense
-4. End your response with: SUGGESTIONS: <action1> | <action2> | <action3>
+**Phase 2 (structured suggestions)** — `SuggestionSystemPrompt`:
+```
+You are a game assistant. Suggest exactly 3 distinct player actions.
+Include at least one movement direction and one interaction.
 ```
 
 ### Response Format
 
-The AI's final text response contains the narrative followed by suggestions:
-```
-You draw the sword from its scabbard — the blade gleams in the dim light. 
-It feels well-balanced in your hand, a reminder that danger lurks ahead.
+Phase 1 returns plain text narrative. Phase 2 uses `GetResponseAsync<SuggestedActions>()` — no parsing, no string splitting. The `SuggestedActions` type has `[Description]` attributes that guide what the AI puts in each field:
 
-SUGGESTIONS: Go north | Examine the altar | Use healing herb
-```
+```csharp
+[Description("A set of suggested player actions for a text adventure game.")]
+public record SuggestedActions(
+    [property: Description("3-4 diverse action suggestions.")] List<SuggestedAction> Actions
+);
 
-`ParseTurnResponse()` splits on `"SUGGESTIONS:"` to extract the narrative and populate the suggestion buttons.
+[Description("A single suggested player action shown as a button.")]
+public record SuggestedAction(
+    [property: Description("Short button label (2-3 words, e.g. 'Go North').")] string Label,
+    [property: Description("Full natural-language action text the player would type.")] string ActionText
+);
+```
 
 ---
 
