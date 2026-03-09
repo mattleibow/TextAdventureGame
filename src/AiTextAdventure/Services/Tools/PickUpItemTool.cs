@@ -13,7 +13,7 @@ public class PickUpItemTool(ToolContext ctx)
         string itemName,
         [Description("One evocative sentence describing what this item looks like.")]
         string description,
-        [Description("REQUIRED. The item's gameplay classification — analyze the item name and set this correctly. Weapons (swords, knives, axes, spears, bows, clubs, scimitars, rapiers) → 'weapon:15'. Armor and protection (shields, bracers, mail, cloaks, helms, pauldrons) → 'armor:10'. Healing items (potions, herbs, tonics, salves, vials) → 'heal:30'. Food (bread, jerky, meat, fruit, berries, rations) → 'food:25'. Venomous creatures or traps → 'poison:25'. Use empty string ONLY for purely decorative items with no combat or survival use.")]
+        [Description("REQUIRED. The item's gameplay classification — analyze the item name and set this correctly. Weapons (swords, knives, axes, spears, bows, clubs, scimitars, rapiers) → 'weapon:15'. Armor and protection (shields, bracers, mail, cloaks, helms, pauldrons) → 'armor:10'. Healing items (potions, herbs, tonics, salves, vials) → 'heal:30'. Food (bread, jerky, meat, fruit, berries, rations) → 'food:25'. Trinkets, gems, artifacts, and decorative items → empty string ''. Use empty string ONLY for items with no combat or survival use.")]
         string effect,
         CancellationToken cancellationToken = default)
     {

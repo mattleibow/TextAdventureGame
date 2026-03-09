@@ -24,8 +24,8 @@ public class MapService(
         Valid biomes: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra.
         Biome transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins.
         Features are 1-2 large IMMOVABLE landmarks (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, ancient tree, boulder, pool). Players can examine but not pick them up.
-        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, venomous creature/trap.
-        Use specific evocative names. Farther from origin (Dist) = more dangerous/exotic.
+        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, mystic trinket/gem/artifact.
+        Use specific evocative names. Farther from origin (Dist) = more exotic/rare.
         """;
 
     // Direction → (dx, dy) mapping
@@ -334,23 +334,23 @@ public class MapService(
     private static List<string> DefaultHiddenItems(string biome) => biome.ToLowerInvariant() switch
     {
         "desert" or "badlands" =>
-            ["shimmering healing tonic", "salted camel jerky", "rusted iron scimitar", "sun-bleached bone shield", "desert horned viper"],
+            ["shimmering healing tonic", "salted camel jerky", "rusted iron scimitar", "sun-bleached bone shield", "sand-polished amber gem"],
         "cave" or "dungeon" =>
-            ["glowing healing mushroom", "dried cave moss cake", "iron-spiked war club", "iron-banded buckler", "venomous cave spider"],
+            ["glowing healing mushroom", "dried cave moss cake", "iron-spiked war club", "iron-banded buckler", "crystal cave formation"],
         "ocean" or "coast" =>
-            ["seaweed healing salve", "dried salted fish", "barnacle-crusted cutlass", "crab-shell pauldron", "stonefish trap"],
+            ["seaweed healing salve", "dried salted fish", "barnacle-crusted cutlass", "crab-shell pauldron", "polished sea-glass amulet"],
         "mountain" or "alpine" or "tundra" =>
-            ["alpine healing herb", "frozen strip of venison", "stone-tipped climbing axe", "wolf-pelt cloak", "mountain adder"],
+            ["alpine healing herb", "frozen strip of venison", "stone-tipped climbing axe", "wolf-pelt cloak", "icy blue gemstone"],
         "swamp" =>
-            ["bog healing root", "smoked swamp eel", "sharpened bone spear", "toad-leather vest", "swamp moccasin snake"],
+            ["bog healing root", "smoked swamp eel", "sharpened bone spear", "toad-leather vest", "luminous swamp crystal"],
         "ruins" =>
-            ["cracked healing vial", "hardtack ration biscuit", "corroded iron longsword", "dented iron shield", "venomous ruins adder"],
+            ["cracked healing vial", "hardtack ration biscuit", "corroded iron longsword", "dented iron shield", "ancient carved rune stone"],
         "plains" =>
-            ["prairie healing flower", "dried prairie rabbit", "flint-tipped hunting spear", "hide-stitched bracers", "prairie rattlesnake"],
+            ["prairie healing flower", "dried prairie rabbit", "flint-tipped hunting spear", "hide-stitched bracers", "smooth river-worn medallion"],
         "hills" =>
-            ["hill-sage healing poultice", "smoked hill-goat strips", "iron shortsword", "reinforced leather armor", "hill viper"],
+            ["hill-sage healing poultice", "smoked hill-goat strips", "iron shortsword", "reinforced leather armor", "polished flint arrowhead"],
         _ => // forest default
-            ["luminescent healing berry", "dried mushroom rations", "carved bone hunting knife", "bark-woven leather bracers", "venomous forest asp"]
+            ["luminescent healing berry", "dried mushroom rations", "carved bone hunting knife", "bark-woven leather bracers", "glowing forest sprite crystal"]
     };
 
     private static List<string> CompassExits() =>
