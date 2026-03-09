@@ -13,7 +13,7 @@ public record NarrativeParagraph(string Text)
 }
 
 public partial class GameViewModel(
-    GameOrchestrator orchestrator,
+    GameMaster gameMaster,
     ILogger<GameViewModel> logger) : ObservableObject
 {
     private SidebarViewModel? _sidebar;
@@ -55,7 +55,7 @@ public partial class GameViewModel(
         StatusMessage = "Weaving the world...";
         try
         {
-            var result = await orchestrator.InitializeGameAsync(SaveSlotId);
+            var result = await gameMaster.InitializeGameAsync(SaveSlotId);
             logger.LogInformation("InitializeAsync complete: narrative={Length} chars, suggestions={Count}", result.Narrative.Length, result.Suggestions.Count);
             AddNarrative(result.Narrative);
             SetSuggestions(result.Suggestions);
@@ -97,7 +97,7 @@ public partial class GameViewModel(
 
         try
         {
-            var result = await orchestrator.ProcessTurnAsync(SaveSlotId, input);
+            var result = await gameMaster.ProcessTurnAsync(SaveSlotId, input);
             logger.LogInformation("SubmitAction complete: narrative={Length} chars, suggestions={Count}", result.Narrative.Length, result.Suggestions.Count);
             SetSuggestions([]);
             AddNarrative(result.Narrative);

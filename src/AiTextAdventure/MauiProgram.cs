@@ -74,7 +74,7 @@ public static class MauiProgram
         services.AddSingleton<WorldStateService>();
         services.AddSingleton<SaveSlotService>();
         services.AddSingleton<MapService>();
-        services.AddSingleton<GameOrchestrator>();
+        services.AddSingleton<GameMaster>();
 
         // -- ViewModels --
         services.AddTransient<MainMenuViewModel>();

@@ -26,9 +26,7 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(ConsistencyVerdict))]
 [JsonSerializable(typeof(SuggestedActions))]
 [JsonSerializable(typeof(SuggestedAction))]
-[JsonSerializable(typeof(ActionResult))]
-[JsonSerializable(typeof(PickedUpItem))]
-[JsonSerializable(typeof(List<PickedUpItem>))]
+[JsonSerializable(typeof(List<SuggestedAction>))]
 [JsonSerializable(typeof(List<SaveSlot>))]
 [JsonSerializable(typeof(List<WorldState>))]
 [JsonSerializable(typeof(List<Npc>))]
@@ -37,6 +35,5 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(List<GameLocation>))]
 [JsonSerializable(typeof(List<PlayerStats>))]
 [JsonSerializable(typeof(List<MapTile>))]
-[JsonSerializable(typeof(List<SuggestedAction>))]
 public partial class GameJsonContext : JsonSerializerContext;
 
