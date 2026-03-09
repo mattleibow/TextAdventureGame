@@ -7,35 +7,29 @@ namespace AiTextAdventure.Models;
 /// Structured state changes returned by the ActionResolver agent.
 /// Applied to the database after each player action.
 /// </summary>
-[Description("State changes that result from the player's action this turn. Only include changes that clearly happened — use empty lists when nothing changed.")]
+[Description("State changes that result from the player's action. Use empty lists when nothing changed. All names MUST be copied verbatim from the provided lists — do not paraphrase, abbreviate, or invent names.")]
 public class ActionResult
 {
-    [Description("Items the player explicitly picked up this turn. Empty if the player did not pick up anything.")]
+    [Description("Items the player picked up. Each ItemName MUST be copied exactly from the 'Available portable items' list provided. Empty if the player did not pick anything up.")]
     public List<PickedUpItem> ItemsPickedUp { get; set; } = [];
 
-    [Description("Names of items the player explicitly dropped this turn. Empty if nothing was dropped.")]
+    [Description("Names of inventory items the player explicitly dropped. Each name MUST be copied exactly from the 'Player inventory' list. Empty if nothing was dropped.")]
     public List<string> ItemsDropped { get; set; } = [];
 
-    [Description("If the player moved to a new named location, the location name. Null if no movement occurred.")]
-    public string? LocationChanged { get; set; }
-
-    [Description("Names of entities or items to remove from the world (e.g. consumed, destroyed). Empty if nothing was removed.")]
+    [Description("Names of world entities to remove because they were picked up, consumed, or destroyed. Copy exact names from the provided lists. Empty if nothing was removed.")]
     public List<string> EntitiesRemoved { get; set; } = [];
 
-    [Description("New entities or items that appeared in the world this turn (e.g. something discovered). Empty if nothing new appeared.")]
+    [Description("New portable entity names that appeared in the world this turn. Empty if nothing new appeared.")]
     public List<string> NewEntities { get; set; } = [];
-
-    [Description("The cardinal direction the player moved, if any movement occurred. Null if no movement.")]
-    public MovementDirection? MovementDirection { get; set; }
 }
 
-[Description("An item the player picked up, with its name and a short description.")]
+[Description("An item the player picked up.")]
 public class PickedUpItem
 {
-    [Description("Exact name of the item as it appears in the world item list.")]
+    [Description("The item name copied EXACTLY from the 'Available portable items' list — no abbreviation, no paraphrasing.")]
     public string ItemName { get; set; } = "";
 
-    [Description("Brief description of the item (1 sentence).")]
+    [Description("One sentence describing the item.")]
     public string Description { get; set; } = "";
 }
 
