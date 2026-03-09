@@ -41,6 +41,8 @@ public class GameOrchestrator(
         Set MovementDirection to the direction string if the player is moving.
         Set IsExploring to true if the player is looking around, searching, or examining the area.
         For ItemsPickedUp, include the item's Effect: heal:N, food:N, weapon:N, armor:N, poison:N.
+        If the player picks up something dangerous (poison, venomous creature, trap), put it in both
+        ItemsPickedUp and ItemsUsed with a poison:N effect, representing the danger of handling it.
         """;
 
     private const string SuggestionSystemPrompt = """

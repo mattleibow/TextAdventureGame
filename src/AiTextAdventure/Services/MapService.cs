@@ -223,21 +223,6 @@ public class MapService(
         return (0, 0);
     }
 
-    public static string? DetectMovementDirection(string input)
-    {
-        var lower = input.ToLowerInvariant();
-        var moveKeywords = new[] { "go ", "walk ", "head ", "travel ", "move ", "follow ", "take " };
-        var hasMove = moveKeywords.Any(k => lower.Contains(k)) ||
-                      lower.StartsWith("north") || lower.StartsWith("south") ||
-                      lower.StartsWith("east") || lower.StartsWith("west");
-        if (!hasMove) return null;
-
-        // Order matters: check diagonals first
-        foreach (var dir in new[] { "northeast", "northwest", "southeast", "southwest", "north", "south", "east", "west" })
-            if (lower.Contains(dir)) return dir;
-        return null;
-    }
-
     // ── Private helpers ──────────────────────────────────────────────────────
 
     private async Task<MapTile> GenerateSingleTile(
