@@ -37,10 +37,58 @@ public class SaveSlotService(IDocumentStore store, ILogger<SaveSlotService> logg
         return all.FirstOrDefault(s => s.Id == id);
     }
 
+    /// <summary>
+    /// Deletes a save slot and ALL associated data: WorldState, PlayerStats,
+    /// InventoryItems, JournalEntries, and MapTiles.
+    /// </summary>
     public async Task DeleteSaveSlot(Guid id, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("DB: Delete SaveSlot {Id}", id);
+        logger.LogInformation("DB: Deleting save slot {Id} with all related data", id);
+
+        // Delete the save slot record itself
         await store.Remove<SaveSlot>(id.ToString(), cancellationToken);
+
+        // Delete WorldState for this slot
+        var worldStates = await store.GetAll<WorldState>(GameJsonContext.Default.WorldState, cancellationToken);
+        foreach (var ws in worldStates.Where(w => w.SaveSlotId == id))
+        {
+            await store.Remove<WorldState>(ws.Id.ToString(), cancellationToken);
+            logger.LogDebug("DB: Removed WorldState {Id}", ws.Id);
+        }
+
+        // Delete PlayerStats for this slot
+        var playerStats = await store.GetAll<PlayerStats>(GameJsonContext.Default.PlayerStats, cancellationToken);
+        foreach (var ps in playerStats.Where(p => p.SaveSlotId == id))
+        {
+            await store.Remove<PlayerStats>(ps.Id.ToString(), cancellationToken);
+            logger.LogDebug("DB: Removed PlayerStats {Id}", ps.Id);
+        }
+
+        // Delete InventoryItems for this slot
+        var items = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
+        foreach (var item in items.Where(i => i.SaveSlotId == id))
+        {
+            await store.Remove<InventoryItem>(item.Id.ToString(), cancellationToken);
+            logger.LogDebug("DB: Removed InventoryItem {Id}", item.Id);
+        }
+
+        // Delete JournalEntries for this slot
+        var entries = await store.GetAll<JournalEntry>(GameJsonContext.Default.JournalEntry, cancellationToken);
+        foreach (var entry in entries.Where(e => e.SaveSlotId == id))
+        {
+            await store.Remove<JournalEntry>(entry.Id.ToString(), cancellationToken);
+            logger.LogDebug("DB: Removed JournalEntry {Id}", entry.Id);
+        }
+
+        // Delete MapTiles for this slot
+        var tiles = await store.GetAll<MapTile>(GameJsonContext.Default.MapTile, cancellationToken);
+        foreach (var tile in tiles.Where(t => t.SaveSlotId == id))
+        {
+            await store.Remove<MapTile>(tile.Id.ToString(), cancellationToken);
+            logger.LogDebug("DB: Removed MapTile ({X},{Y})", tile.X, tile.Y);
+        }
+
+        logger.LogInformation("DB: Deleted all data for save slot {Id}", id);
     }
 
     public async Task UpdateLastPlayed(Guid id, CancellationToken cancellationToken = default)
