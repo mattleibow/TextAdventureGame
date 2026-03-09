@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
-using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Tools;
 
@@ -14,6 +13,8 @@ public class UseItemTool(ToolContext ctx)
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(itemName)) return "No item name provided.";
+
+        ctx.EmitToolCall("use_item", $"item={itemName}");
 
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
@@ -34,8 +35,7 @@ public class UseItemTool(ToolContext ctx)
         if (worldState is not null)
             await ctx.SaveRecentEvent(worldState, $"used {invItem.ItemName}", cancellationToken);
 
-        ctx.EventStream.Emit(new AgentEvent($"✨ used: {invItem.ItemName}", "GameMaster", AgentEventKind.ToolResult,
-            $"HP:{beforeHp}→{stats.Health} Hunger:{beforeHunger}→{stats.Hunger}"));
+        ctx.EmitToolResult("✨", $"used: {invItem.ItemName}", $"Used {invItem.ItemName}. HP:{beforeHp}→{stats.Health} Hunger:{beforeHunger}→{stats.Hunger}");
         return $"You use the {invItem.ItemName}. HP: {beforeHp}→{stats.Health}. Hunger: {beforeHunger}→{stats.Hunger}.";
     }
 }

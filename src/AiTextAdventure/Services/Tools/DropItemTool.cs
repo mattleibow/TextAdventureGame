@@ -1,8 +1,6 @@
 using System.ComponentModel;
-using Microsoft.Extensions.Logging;
 using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
-using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Tools;
 
@@ -15,6 +13,8 @@ public class DropItemTool(ToolContext ctx)
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(itemName)) return "No item name provided.";
+
+        ctx.EmitToolCall("drop_item", $"item={itemName}");
 
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
@@ -44,7 +44,7 @@ public class DropItemTool(ToolContext ctx)
             await ctx.SaveRecentEvent(worldState, $"dropped {invItem.ItemName}", cancellationToken);
         }
 
-        ctx.EventStream.Emit(new AgentEvent($"🗑 dropped: {invItem.ItemName}", "GameMaster", AgentEventKind.ToolResult));
+        ctx.EmitToolResult("🗑️", $"dropped: {invItem.ItemName}", $"Dropped {invItem.ItemName} at current location. It can be picked up again.");
         return $"You drop the {invItem.ItemName} on the ground.";
     }
 }

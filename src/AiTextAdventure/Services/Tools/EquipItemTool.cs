@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
-using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Tools;
 
@@ -15,12 +14,15 @@ public class EquipItemTool(ToolContext ctx)
     {
         if (string.IsNullOrWhiteSpace(itemName)) return "No item name provided.";
 
+        ctx.EmitToolCall("equip_item", $"item={itemName}");
+
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
         if (invItem is null) return $"'{itemName}' is not in your inventory.";
-        var isWeapon = invItem.IsEquippable && invItem.Effect.StartsWith("weapon", StringComparison.OrdinalIgnoreCase);
-        var isArmor  = invItem.IsEquippable && invItem.Effect.StartsWith("armor", StringComparison.OrdinalIgnoreCase);
+        // Check effect directly — not IsEquippable, which may be stale if effect was set after pickup
+        var isWeapon = invItem.Effect.StartsWith("weapon", StringComparison.OrdinalIgnoreCase);
+        var isArmor  = invItem.Effect.StartsWith("armor", StringComparison.OrdinalIgnoreCase);
 
         if (!isWeapon && !isArmor)
             return $"'{itemName}' cannot be equipped. It may have been picked up without a weapon/armor effect set. Try dropping it and picking it up again, or use use_item if it's consumable.";
@@ -33,7 +35,7 @@ public class EquipItemTool(ToolContext ctx)
         {
             stats.EquippedWeapon = invItem.ItemName;
             resultMsg = $"You equip the {invItem.ItemName} as your weapon.";
-            ctx.EventStream.Emit(new AgentEvent($"⚔️ equipped weapon: {invItem.ItemName}", "GameMaster", AgentEventKind.ToolResult));
+            ctx.EmitToolResult("⚔️", $"equipped weapon: {invItem.ItemName}", resultMsg);
         }
         else
         {
@@ -41,7 +43,7 @@ public class EquipItemTool(ToolContext ctx)
             if (invItem.Effect.Length > 6 && int.TryParse(invItem.Effect.AsSpan(6), out var armorVal))
                 stats.Armor = armorVal;
             resultMsg = $"You equip the {invItem.ItemName} (+{stats.Armor} armor).";
-            ctx.EventStream.Emit(new AgentEvent($"🛡️ equipped armor: {invItem.ItemName} (+{stats.Armor})", "GameMaster", AgentEventKind.ToolResult));
+            ctx.EmitToolResult("🛡️", $"equipped armor: {invItem.ItemName} (+{stats.Armor})", resultMsg);
         }
 
         await ctx.WorldStateService.SavePlayerStats(stats, cancellationToken);

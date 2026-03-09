@@ -26,6 +26,8 @@ public class GameMaster(
     EventStream eventStream,
     ILogger<GameMaster> logger)
 {
+    private int _turnNumber = 0;
+
     /// <summary>
     /// System prompt for Phase 1 (tool-calling). Guides the AI to use tools and write narrative.
     /// Deliberately omits any format instructions — structured output handles suggestions separately.
@@ -36,25 +38,30 @@ public class GameMaster(
         When the player gives you an action:
         1. Call get_world_state to understand the current situation.
         2. Call get_current_tile to get the scene description.
-        3. Execute the player's intent using the right tool:
-           - Moving → move_player
-           - Searching/exploring → look_around
-           - Picking up an item → pick_up_item (only items in PORTABLE ITEMS)
+        3. Execute the player's intent using the CORRECT tool:
+           - Moving/walking/going → move_player (REQUIRED — never just describe moving)
+           - Searching/looking/exploring → look_around (REQUIRED — never skip this)
+           - Picking up an item → pick_up_item (REQUIRED — ALWAYS call this for ANY pickup action)
            - Dropping an item → drop_item
            - Eating/drinking/using → use_item
            - Equipping weapon or armor → equip_item
-           - Examining a landmark → use get_current_tile data (no extra tool needed)
+
+        CRITICAL RULES:
+        - You MUST call the matching tool for every game action. Never narrate an action without calling its tool.
+        - If the player says "pick up", "take", "grab", or any synonym → call pick_up_item.
+        - If the player says "go", "walk", "move", or any direction → call move_player.
+        - Only pick up items from the PORTABLE ITEMS list in get_world_state. Do not invent items.
         4. Write a vivid 2-4 sentence narrative in second-person present tense.
            React to what the tools returned. Be atmospheric and specific.
-
-        You are the sole decision-maker. Never invent items that are not in PORTABLE ITEMS.
         """;
 
     /// <summary>System prompt for Phase 2 (structured suggestions). Minimal, focused.</summary>
     private const string SuggestionSystemPrompt = """
-        You are a game assistant for a text adventure. Suggest exactly 3 distinct player actions.
-        Include at least one movement direction and one interaction with the environment.
-        Reference specific items or features from context when available.
+        You are a game assistant for a text adventure. Suggest exactly 3 player actions.
+        Each suggestion must be ONE SINGLE action only — never compound or bundle multiple actions.
+        Good: "go north", "pick up the sword", "look around".
+        Bad: "go north and pick up the sword", "look around then talk to the guard".
+        Include at least one movement and one item/environment interaction.
         """;
 
     public async Task<GameTurnResult> InitializeGameAsync(Guid saveSlotId, CancellationToken ct = default)
@@ -101,7 +108,12 @@ public class GameMaster(
 
     public async Task<GameTurnResult> ProcessTurnAsync(Guid saveSlotId, string playerInput, CancellationToken ct = default)
     {
-        logger.LogInformation("Turn: {Input}", playerInput[..Math.Min(60, playerInput.Length)]);
+        var turnNum = Interlocked.Increment(ref _turnNumber);
+        logger.LogInformation("Turn {Turn}: {Input}", turnNum, playerInput[..Math.Min(60, playerInput.Length)]);
+
+        // Emit turn start so EventsPanelViewModel can render a collapsible group header
+        eventStream.Emit(new AgentEvent($"Turn {turnNum}", "GameMaster", AgentEventKind.TurnStart,
+            playerInput[..Math.Min(60, playerInput.Length)]));
         eventStream.Emit(new AgentEvent($"▶ \"{playerInput[..Math.Min(40, playerInput.Length)]}\"", "GameMaster", AgentEventKind.AgentInvoked));
 
         var slot = await saveSlotService.GetSaveSlot(saveSlotId, ct);

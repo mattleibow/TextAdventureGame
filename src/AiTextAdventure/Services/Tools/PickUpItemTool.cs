@@ -2,7 +2,6 @@ using System.ComponentModel;
 using Microsoft.Extensions.Logging;
 using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
-using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Tools;
 
@@ -19,6 +18,8 @@ public class PickUpItemTool(ToolContext ctx)
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(itemName)) return "No item name provided.";
+
+        ctx.EmitToolCall("pick_up_item", $"item={itemName}, effect={effect}");
 
         var worldState = await ctx.WorldStateService.GetCurrentState(ctx.SaveSlotId, cancellationToken);
         if (worldState is null) return "Cannot pick up — world not initialized.";
@@ -44,8 +45,7 @@ public class PickUpItemTool(ToolContext ctx)
             await ctx.RemoveFromTile(worldState, match, cancellationToken);
             await ctx.SaveRecentEvent(worldState, $"touched {match} — took damage!", cancellationToken);
 
-            ctx.EventStream.Emit(new AgentEvent($"☠️ poison: {match}", "GameMaster", AgentEventKind.ToolResult,
-                $"HP: {dmgStats.Health}/{dmgStats.MaxHealth}"));
+            ctx.EmitToolResult("☠️", $"poison: {match}", $"HP: {dmgStats.Health}/{dmgStats.MaxHealth} — {match} was dangerous!");
             return $"You reach for {match} — it bites! Venomous. You take damage. HP: {dmgStats.Health}/{dmgStats.MaxHealth}. It falls away.";
         }
 
@@ -67,7 +67,7 @@ public class PickUpItemTool(ToolContext ctx)
         await ctx.RemoveFromTile(worldState, match, cancellationToken);
         await ctx.SaveRecentEvent(worldState, $"picked up {match}", cancellationToken);
 
-        ctx.EventStream.Emit(new AgentEvent($"🎒 +{match} [{normalEffect}]", "GameMaster", AgentEventKind.ToolResult));
+        ctx.EmitToolResult("🎒", $"+{match} [{normalEffect}]", $"Picked up: {match}. Effect={normalEffect}. Inventory updated.");
         return $"You pick up the {match} and add it to your inventory.";
     }
 }

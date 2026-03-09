@@ -27,6 +27,15 @@ public class ToolContext(
     public EventStream EventStream => eventStream;
     public ILogger Logger => logger;
 
+    /// <summary>Emits a tool call event (before the tool runs) so the observer can see what the AI requested.</summary>
+    public void EmitToolCall(string toolName, string? args = null) =>
+        eventStream.Emit(new AgentEvent($"🔧 {toolName}", "Tool", AgentEventKind.ToolCall, args, args));
+
+    /// <summary>Emits a tool result event with full expandable content.</summary>
+    public void EmitToolResult(string icon, string summary, string? fullResult = null) =>
+        eventStream.Emit(new AgentEvent($"{icon} {summary}", "Tool", AgentEventKind.ToolResult,
+            summary[..Math.Min(80, summary.Length)], fullResult ?? summary));
+
     /// <summary>Applies a game effect string (heal:N, food:N, weapon:N, armor:N, poison:N) to player stats.</summary>
     public static void ApplyEffect(PlayerStats stats, string effect)
     {

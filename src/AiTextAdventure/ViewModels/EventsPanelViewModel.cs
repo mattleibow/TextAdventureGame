@@ -15,10 +15,16 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 
     public bool HasFullContent => !string.IsNullOrWhiteSpace(evt.FullContent);
 
+    // Turn grouping
+    public bool IsTurnHeader => evt.Kind == AgentEventKind.TurnStart;
+    public bool IsRegularEvent => evt.Kind != AgentEventKind.TurnStart;
+    public string TurnLabel => $"⏱ {evt.Title}  —  {(evt.Detail is { Length: > 0 } d ? $"\"{d}\"" : "")}";
+
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ExpandIcon))]
+    [NotifyPropertyChangedFor(nameof(ExpandIcon), nameof(IsExpandedContent))]
     private bool isExpanded = false;
 
+    public bool IsExpandedContent => IsExpanded && IsRegularEvent;
     public string ExpandIcon => IsExpanded ? "▼" : "▶";
 
     [RelayCommand]
@@ -26,6 +32,7 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 
     public string Icon => evt.Kind switch
     {
+        AgentEventKind.TurnStart => "⏱",
         AgentEventKind.AgentInvoked => "🚀",
         AgentEventKind.AgentCompleted => "✅",
         AgentEventKind.AgentInput => "📥",

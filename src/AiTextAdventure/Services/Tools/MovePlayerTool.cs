@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using Microsoft.Extensions.Logging;
-using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Tools;
 
@@ -15,6 +14,8 @@ public class MovePlayerTool(ToolContext ctx)
         if (string.IsNullOrWhiteSpace(direction))
             return "No direction specified. Use: north, south, east, west, northeast, northwest, southeast, or southwest.";
 
+        ctx.EmitToolCall("move_player", $"direction={direction}");
+
         var worldState = await ctx.WorldStateService.GetCurrentState(ctx.SaveSlotId, cancellationToken);
         if (worldState is null) return "Cannot move — world state not found.";
 
@@ -27,11 +28,10 @@ public class MovePlayerTool(ToolContext ctx)
             if (newState.RecentEvents.Count > 3) newState.RecentEvents = newState.RecentEvents[^3..];
             await ctx.WorldStateService.SaveState(newState, cancellationToken);
 
-            ctx.EventStream.Emit(new AgentEvent(
-                $"🗺️ Moved {direction} → {newTile.LocationName} ({newTile.Biome})",
-                "GameMaster", AgentEventKind.ToolResult));
-
             var tileContext = ctx.MapService.BuildTileContext(newTile, newTile.IsRevealed);
+            ctx.EmitToolResult("🗺️", $"Moved {direction} → {newTile.LocationName} ({newTile.Biome})",
+                $"You move {direction}.\n{tileContext}");
+
             return $"You move {direction}.\n{tileContext}";
         }
         catch (Exception ex)

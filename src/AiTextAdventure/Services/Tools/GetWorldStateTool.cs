@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
-using AiTextAdventure.Services.Observability;
 
 namespace AiTextAdventure.Services.Tools;
 
@@ -10,6 +9,7 @@ public class GetWorldStateTool(ToolContext ctx)
     [Description("Get the current world state: player location, visible portable items, landmarks, inventory, and stats. Always call this first before acting so you know what exists.")]
     public async Task<string> GetWorldState(CancellationToken cancellationToken = default)
     {
+        ctx.EmitToolCall("get_world_state");
         var worldState = await ctx.WorldStateService.GetCurrentState(ctx.SaveSlotId, cancellationToken);
         var stats = await ctx.WorldStateService.GetPlayerStats(ctx.SaveSlotId, cancellationToken);
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
@@ -59,8 +59,7 @@ public class GetWorldStateTool(ToolContext ctx)
         }
 
         var result = sb.ToString().Trim();
-        ctx.EventStream.Emit(new AgentEvent("🌍 get_world_state", "GameMaster", AgentEventKind.ToolResult,
-            result[..Math.Min(120, result.Length)]));
+        ctx.EmitToolResult("🌍", $"get_world_state ({worldState?.CurrentLocation ?? "unknown"})", result);
         return result;
     }
 }

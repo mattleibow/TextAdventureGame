@@ -12,7 +12,7 @@ public record SuggestedActions(
 public record SuggestedAction(
     [property: Description("Short button label shown to the player (2-3 words, e.g. 'Go North', 'Pick Up Sword', 'Examine Altar').")]
     string Label,
-    [property: Description("Full natural-language action text the player would type (e.g. 'go north', 'pick up the iron sword', 'examine the stone altar').")]
+    [property: Description("ONE single player action (2-6 words). Must be exactly one action — never compound or combine actions with 'and', 'then', or commas. E.g. 'go north', 'pick up the iron sword', 'examine the stone altar', 'look around'.")]
     string ActionText
 );
 

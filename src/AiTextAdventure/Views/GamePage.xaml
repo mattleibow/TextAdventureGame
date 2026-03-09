@@ -448,13 +448,28 @@
                         </CollectionView.EmptyView>
                         <CollectionView.ItemTemplate>
                              <DataTemplate x:DataType="vm:AgentEventViewModel">
-                                 <StackLayout Margin="0,0,0,3">
-                                     <!-- Collapsed header row — tap to expand -->
-                                     <Frame BackgroundColor="{StaticResource CardBg}"
+                                 <StackLayout Margin="0,0,0,2">
+                                     <!-- ── Turn group header (TurnStart events only) ── -->
+                                     <Frame IsVisible="{Binding IsTurnHeader}"
+                                            BackgroundColor="#1a1a2e"
+                                            BorderColor="{StaticResource GoldAccent}"
+                                            CornerRadius="4"
+                                            Padding="8,5"
+                                            HasShadow="False"
+                                            Margin="0,8,0,2">
+                                         <Label Text="{Binding TurnLabel}"
+                                                FontSize="11"
+                                                FontAttributes="Bold"
+                                                TextColor="{StaticResource GoldAccent}" />
+                                     </Frame>
+                                     <!-- ── Regular event collapsed header row ── -->
+                                     <Frame IsVisible="{Binding IsRegularEvent}"
+                                            BackgroundColor="{StaticResource CardBg}"
                                             BorderColor="{StaticResource BorderSubtle}"
                                             CornerRadius="4"
                                             Padding="6,5"
-                                            HasShadow="False">
+                                            HasShadow="False"
+                                            Margin="8,0,0,0">
                                          <Frame.GestureRecognizers>
                                              <TapGestureRecognizer Command="{Binding ToggleCommand}" />
                                          </Frame.GestureRecognizers>
@@ -490,14 +505,14 @@
                                                     Margin="4,0,0,0" />
                                          </Grid>
                                      </Frame>
-                                     <!-- Expanded detail panel — shown when IsExpanded = true -->
-                                     <Frame IsVisible="{Binding IsExpanded}"
+                                     <!-- ── Expanded detail panel (regular events with content only) ── -->
+                                     <Frame IsVisible="{Binding IsExpandedContent}"
                                             BackgroundColor="#1e1e2e"
                                             BorderColor="{StaticResource BorderSubtle}"
                                             CornerRadius="4"
                                             Padding="8,6"
                                             HasShadow="False"
-                                            Margin="8,0,0,0">
+                                            Margin="16,0,0,0">
                                          <Label Text="{Binding FullContent}"
                                                 FontSize="10"
                                                 FontFamily="Courier New"
