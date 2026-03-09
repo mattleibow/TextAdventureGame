@@ -274,9 +274,10 @@ public class GameOrchestrator(
         {
             var portableItems = string.Join(", ", (worldState.KnownEntities ?? []).Take(6));
             var landmarks = string.Join(", ", (worldState.LandmarkEntities ?? []).Take(4));
-            var userCtx = $"Portable items: {(string.IsNullOrEmpty(portableItems) ? "none" : portableItems)}.";
-            if (!string.IsNullOrEmpty(landmarks)) userCtx += $" Landmarks (inspect only): {landmarks}.";
-            userCtx += $" Action: {playerInput}. Narrative: {narrativeText[..Math.Min(120, narrativeText.Length)]}";
+            // Pass exact item names explicitly so the AI uses them verbatim in ItemsPickedUp
+            var userCtx = $"Portable items the player can pick up (use EXACT names): [{(string.IsNullOrEmpty(portableItems) ? "none" : portableItems)}].";
+            if (!string.IsNullOrEmpty(landmarks)) userCtx += $" Immovable landmarks (examine only, never pick up): [{landmarks}].";
+            userCtx += $" Player action: \"{playerInput}\". What just happened: {narrativeText[..Math.Min(120, narrativeText.Length)]}";
 
             eventStream.Emit(new AgentEvent("📋 Resolver prompt", "ActionResolver", AgentEventKind.Prompt,
                 $"Action: {playerInput[..Math.Min(50, playerInput.Length)]}",
@@ -310,52 +311,66 @@ public class GameOrchestrator(
             {
                 if (string.IsNullOrWhiteSpace(item.ItemName)) continue;
 
-                // Guard 1: item must be in the portable items list (KnownEntities)
-                var exists = (worldState.KnownEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
-                if (!exists) continue;
+                // Guard 1: resolve the canonical KnownEntity name that the AI is referring to.
+                // The AI may return a partial/approximate name (e.g. "sword" for "weathered iron sword"),
+                // so we do fuzzy matching: exact → AI name contained in entity → entity contained in AI name.
+                var canonical = (worldState.KnownEntities ?? []).FirstOrDefault(e =>
+                    e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase) ||
+                    e.Contains(item.ItemName, StringComparison.OrdinalIgnoreCase) ||
+                    item.ItemName.Contains(e, StringComparison.OrdinalIgnoreCase));
 
-                // Guard 2: item must NOT be in the landmarks list (most reliable check)
-                var isInLandmarks = (worldState.LandmarkEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
+                if (canonical is null)
+                {
+                    eventStream.Emit(new AgentEvent($"🚫 Not in portable list: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
+                    logger.LogInformation("Blocked pickup — not in KnownEntities: {Item} (known: {Known})", item.ItemName, string.Join(", ", worldState.KnownEntities ?? []));
+                    continue;
+                }
+
+                // Use canonical name for all subsequent DB/state operations
+                var canonicalName = canonical;
+
+                // Guard 2: item must NOT be in the landmarks list
+                var isInLandmarks = (worldState.LandmarkEntities ?? []).Any(e => e.Equals(canonicalName, StringComparison.OrdinalIgnoreCase));
                 if (isInLandmarks)
                 {
-                    eventStream.Emit(new AgentEvent($"🚫 Cannot pick up landmark: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
-                    logger.LogInformation("Blocked landmark pickup attempt: {Item}", item.ItemName);
+                    eventStream.Emit(new AgentEvent($"🚫 Cannot pick up landmark: {canonicalName}", "ActionResolver", AgentEventKind.AgentOutput));
+                    logger.LogInformation("Blocked landmark pickup attempt: {Item}", canonicalName);
                     continue;
                 }
 
                 // Guard 3: word-boundary keyword blocklist as last-resort safety net
-                if (IsLandmarkByWords(item.ItemName))
+                if (IsLandmarkByWords(canonicalName))
                 {
-                    eventStream.Emit(new AgentEvent($"🚫 Blocked non-portable: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
-                    logger.LogInformation("Blocked non-portable keyword match: {Item}", item.ItemName);
+                    eventStream.Emit(new AgentEvent($"🚫 Blocked non-portable: {canonicalName}", "ActionResolver", AgentEventKind.AgentOutput));
+                    logger.LogInformation("Blocked non-portable keyword match: {Item}", canonicalName);
                     continue;
                 }
 
-                var effect = InferItemEffect(item.ItemName, item.Description);
+                var effect = InferItemEffect(canonicalName, item.Description);
                 if (effect.StartsWith("poison"))
                 {
                     var stats = await worldStateService.GetPlayerStats(worldState.SaveSlotId, cancellationToken)
                                 ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId };
                     ApplyEffect(stats, effect);
                     await worldStateService.SavePlayerStats(stats, cancellationToken);
-                    changes.Add($"touched {item.ItemName} → damaged!");
-                    eventStream.Emit(new AgentEvent($"☠️ {item.ItemName} (dangerous!)", "ActionResolver", AgentEventKind.AgentOutput, $"HP → {stats.Health}"));
+                    changes.Add($"touched {canonicalName} → damaged!");
+                    eventStream.Emit(new AgentEvent($"☠️ {canonicalName} (dangerous!)", "ActionResolver", AgentEventKind.AgentOutput, $"HP → {stats.Health}"));
                 }
                 else
                 {
                     var invItem = new InventoryItem
                     {
                         Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId,
-                        ItemName = item.ItemName, Description = item.Description, Quantity = 1,
+                        ItemName = canonicalName, Description = item.Description, Quantity = 1,
                         Effect = effect, IsConsumable = IsConsumableEffect(effect), IsEquippable = IsEquippableEffect(effect)
                     };
                     await store.Set(invItem.Id.ToString(), invItem, GameJsonContext.Default.InventoryItem, cancellationToken);
-                    changes.Add($"picked up {item.ItemName}");
-                    eventStream.Emit(new AgentEvent($"🎒 +{item.ItemName} [{effect}]", "Database", AgentEventKind.ToolResult));
-                    logger.LogInformation("Inventory: added {Item} effect={Effect}", item.ItemName, effect);
+                    changes.Add($"picked up {canonicalName}");
+                    eventStream.Emit(new AgentEvent($"🎒 +{canonicalName} [{effect}]", "Database", AgentEventKind.ToolResult));
+                    logger.LogInformation("Inventory: added {Item} effect={Effect}", canonicalName, effect);
                 }
-                if (!result.EntitiesRemoved.Contains(item.ItemName))
-                    result.EntitiesRemoved.Add(item.ItemName);
+                if (!result.EntitiesRemoved.Contains(canonicalName))
+                    result.EntitiesRemoved.Add(canonicalName);
             }
 
             // Items dropped
@@ -381,15 +396,19 @@ public class GameOrchestrator(
                 }
             }
 
-            // Remove entities from world snapshot
+            // Remove entities from world snapshot — use fuzzy match so partial names (e.g. "sword") remove
+            // the canonical entry ("weathered iron sword") correctly.
             worldState.KnownEntities ??= [];
             foreach (var removed in result.EntitiesRemoved)
             {
-                var idx = worldState.KnownEntities.FindIndex(e => e.Equals(removed, StringComparison.OrdinalIgnoreCase));
+                var idx = worldState.KnownEntities.FindIndex(e =>
+                    e.Equals(removed, StringComparison.OrdinalIgnoreCase) ||
+                    e.Contains(removed, StringComparison.OrdinalIgnoreCase) ||
+                    removed.Contains(e, StringComparison.OrdinalIgnoreCase));
                 if (idx >= 0) worldState.KnownEntities.RemoveAt(idx);
             }
 
-            // Also remove from the persistent MapTile
+            // Also remove from the persistent MapTile (same fuzzy match)
             if (result.EntitiesRemoved.Count > 0)
             {
                 var tile = await mapService.GetTile(worldState.SaveSlotId, worldState.PlayerX, worldState.PlayerY, cancellationToken);
@@ -398,9 +417,15 @@ public class GameOrchestrator(
                     var changed = false;
                     foreach (var removed in result.EntitiesRemoved)
                     {
-                        var fi = tile.Features.FindIndex(f => f.Equals(removed, StringComparison.OrdinalIgnoreCase));
+                        var fi = tile.Features.FindIndex(f =>
+                            f.Equals(removed, StringComparison.OrdinalIgnoreCase) ||
+                            f.Contains(removed, StringComparison.OrdinalIgnoreCase) ||
+                            removed.Contains(f, StringComparison.OrdinalIgnoreCase));
                         if (fi >= 0) { tile.Features.RemoveAt(fi); changed = true; }
-                        var hi = tile.HiddenItems.FindIndex(h => h.Equals(removed, StringComparison.OrdinalIgnoreCase));
+                        var hi = tile.HiddenItems.FindIndex(h =>
+                            h.Equals(removed, StringComparison.OrdinalIgnoreCase) ||
+                            h.Contains(removed, StringComparison.OrdinalIgnoreCase) ||
+                            removed.Contains(h, StringComparison.OrdinalIgnoreCase));
                         if (hi >= 0) { tile.HiddenItems.RemoveAt(hi); changed = true; }
                     }
                     if (changed) await store.Set(tile.Id.ToString(), tile, GameJsonContext.Default.MapTile, cancellationToken);
