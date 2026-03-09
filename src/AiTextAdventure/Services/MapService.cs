@@ -269,8 +269,16 @@ public class MapService(
                 new(ChatRole.System, TileGenSystemPrompt),
                 new(ChatRole.User, userPrompt)
             };
+            eventStream.Emit(new AgentEvent($"📋 TileGen prompt ({x},{y})", "WorldGen", AgentEventKind.Prompt,
+                userPrompt,
+                $"[System]\n{TileGenSystemPrompt}\n\n[User]\n{userPrompt}"));
+
             var response = await chatClient.GetResponseAsync(messages, cancellationToken: ct);
             var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+
+            eventStream.Emit(new AgentEvent($"💬 TileGen response ({x},{y})", "WorldGen", AgentEventKind.Response,
+                json[..Math.Min(60, json.Length)],
+                json));
 
             if (json.Contains("```"))
             {

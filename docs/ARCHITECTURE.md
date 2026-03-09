@@ -34,13 +34,16 @@ AiTextAdventure.slnx
 │   │   ├── ActionResult.cs          # ActionResolver output model
 │   │   ├── SuggestedAction.cs       # Suggestion agent output
 │   │   └── GameJsonContext.cs       # System.Text.Json source-gen context
+│   ├── Agents/
+│   │   ├── AgentFactory.cs          # Creates agent instances
+│   │   ├── Tools/                   # Agent tool functions
+│   │   └── Workflows/
+│   │       └── GameWorkflowFactory.cs   # Handoff workflow (retained for future multi-agent use)
 │   ├── Services/
 │   │   ├── GameOrchestrator.cs      # Turn flow: Narrator→ActionResolver→Suggestion
-│   │   ├── MapService.cs            # Tile generation, movement, reveal
+│   │   ├── MapService.cs            # Tile generation (AI-powered), movement, reveal
 │   │   ├── WorldStateService.cs     # DB helpers for WorldState/Stats/Inventory/Journal
 │   │   ├── SaveSlotService.cs       # Save slot CRUD + cascade delete
-│   │   ├── AppleIntelligenceChatClient.cs  # IChatClient → Apple Intelligence
-│   │   ├── FallbackChatClient.cs    # Deterministic fallback when AI unavailable
 │   │   └── Observability/
 │   │       └── EventStream.cs       # In-process agent event bus
 │   ├── ViewModels/
@@ -123,23 +126,21 @@ var text = response.Messages.LastOrDefault()?.Text?.Trim();
 
 ### AppleIntelligenceChatClient
 
-Wraps Apple's on-device Foundation Models framework via `IMLLanguageModelSession`. Registered as the primary `IChatClient` when running on a supported device (iOS 18.4+ / macOS 15.4+ with Apple Intelligence enabled).
+`Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient` wraps Apple's on-device Foundation Models framework. Registered directly in `MauiProgram.cs` — the app **only supports Apple platforms**. On Android/Windows a `PlatformNotSupportedException` is thrown at startup.
+
+```csharp
+// MauiProgram.cs
+#if IOS || MACCATALYST
+IChatClient raw = new Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient();
+return raw.AsBuilder().UseLogging(loggerFactory).UseFunctionInvocation().Build();
+#else
+throw new PlatformNotSupportedException("Requires Apple Intelligence");
+#endif
+```
 
 Context window: **~2,000 tokens**. All prompts are kept very short. Each prompt targets < 300 characters of user context.
 
-Apple Intelligence has a content safety filter that may refuse some prompts. The orchestrator treats failures as non-fatal and falls back to a short error message.
-
-### FallbackChatClient
-
-When Apple Intelligence is unavailable (simulator, older OS, or non-Apple hardware), `FallbackChatClient` returns deterministic canned responses. It classifies the system prompt to return the right response type:
-
-| Classified as | Detection | Response |
-|---|---|---|
-| `tilegen` | Prompt contains "hiddenitems" or "locationname" | Biome-appropriate tile JSON |
-| `worldgen` | Prompt contains "currentbiome" | World state JSON |
-| `resolver` | Prompt contains "itemspickedup" | Action result JSON |
-| `suggestion` | Prompt contains "suggestion" | Suggestion JSON |
-| `narrator` | Default | Atmospheric prose string |
+Apple Intelligence has a content safety filter that may refuse some prompts. The orchestrator treats failures as non-fatal and returns a short error message.
 
 ---
 
@@ -247,11 +248,26 @@ An in-process publish/subscribe bus for AI agent events:
 eventStream.Emit(new AgentEvent("Narrating...", "Narrator", AgentEventKind.AgentInvoked));
 ```
 
-`AgentEvent` has: `Message`, `AgentName`, `Kind` (Invoked/Output/Completed/Error/ToolResult/WorkflowComplete), optional `Detail`.
+`AgentEvent` has: `Title`, `AgentName`, `Kind`, optional `Detail` (short summary), optional `FullContent` (full prompt/response text shown when expanded).
+
+Key event kinds emitted per turn:
+
+| Kind | When emitted |
+|---|---|
+| `AgentInvoked` | Before each AI call |
+| `Prompt` | System+user prompt text (📋 icon, blue) |
+| `Response` | Full LLM response text (💬 icon, green) |
+| `AgentOutput` | After AI call completes |
+| `ToolCall` / `ToolResult` | Tool invocations and DB operations |
+| `Error` | Any failure |
+| `WorkflowComplete` | End of turn |
 
 ### Events Tab
 
-The 🔮 **Events** tab in the sidebar shows a live scrolling log of all agent events, colour-coded by kind. This is useful for debugging AI behaviour during development.
+The 🔮 **Events** tab shows a live scrolling log. Each event is **collapsible**:
+- **Collapsed**: one-line summary (icon + agent name + title + timestamp)
+- **Expanded**: full content (prompt text, response JSON, tool arguments) — tap to toggle
+- Events with `FullContent` show a ▶/▼ expand indicator
 
 ---
 
@@ -294,5 +310,4 @@ All ViewModels use `CommunityToolkit.Mvvm`:
 | Apple Intelligence content filter | May refuse action descriptions or narrative | Treat as non-fatal; return fallback message |
 | Shiny Guid LINQ bug | `store.Query<T>(x => x.Id == guid)` returns nothing | Always use `GetAll<T>()` + in-memory LINQ |
 | No multi-turn chat history | Each LLM call is stateless; no memory of previous turns | World state + tile context provide grounding |
-| FallbackChatClient is deterministic | Offline play has repetitive responses | Vary by call index; biome-appropriate templates |
 | MapTile generation is one AI call per 3×3 batch | Slow on first visit to a new area | Generation runs in background; subsequent moves are instant |

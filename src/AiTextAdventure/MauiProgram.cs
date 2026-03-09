@@ -2,12 +2,12 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
 using AiTextAdventure.Agents;
+using AiTextAdventure.Agents.Workflows;
 using AiTextAdventure.Models;
 using AiTextAdventure.Services;
 using AiTextAdventure.Services.Observability;
 using AiTextAdventure.ViewModels;
 using AiTextAdventure.Views;
-using AiTextAdventure.Workflows;
 #if DEBUG
 using MauiDevFlow.Agent;
 #endif
@@ -43,18 +43,21 @@ public static class MauiProgram
         });
 
         // -- IChatClient (Apple Intelligence SLM) --
-        // Wrap with MEAI middleware pipeline for observability + function invocation
-        // See: https://learn.microsoft.com/en-us/dotnet/ai/ichatclient
+        // Only supported on Apple platforms (iOS 18.4+ / macOS 15.4+ with Apple Intelligence enabled).
+        // Throws PlatformNotSupportedException on Android/Windows -- the game requires Apple Intelligence.
         services.AddSingleton<IChatClient>(sp =>
         {
             var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-            // Use real Apple Intelligence on-device SLM on supported Apple platforms;
-            // falls back to an unsupported-platform stub on Android/Windows.
-            IChatClient raw = AppleIntelligenceChatClientFactory.Create(loggerFactory);
+#if IOS || MACCATALYST
+            IChatClient raw = new Microsoft.Maui.Essentials.AI.AppleIntelligenceChatClient();
             return raw.AsBuilder()
                 .UseLogging(loggerFactory)
                 .UseFunctionInvocation()
                 .Build();
+#else
+            throw new PlatformNotSupportedException(
+                "AI Text Adventure requires Apple Intelligence and is only supported on iOS and Mac Catalyst.");
+#endif
         });
 
         // -- Persistence (Shiny.SqliteDocumentDb) --

@@ -167,15 +167,25 @@ public class GameOrchestrator(
                     new(ChatRole.System, NarratorSystemPrompt),
                     new(ChatRole.User, $"{tileContext}\nAction: {playerInput}")
                 };
+                var promptSummary = $"{tileContext}\nAction: {playerInput}";
+                eventStream.Emit(new AgentEvent("📋 Narrator prompt", "Narrator", AgentEventKind.Prompt,
+                    promptSummary[..Math.Min(60, promptSummary.Length)],
+                    $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{promptSummary}"));
+
                 var resp = await chatClient.GetResponseAsync(narrativeMessages, cancellationToken: cancellationToken);
                 narrativeText = resp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
                 if (string.IsNullOrWhiteSpace(narrativeText))
                     narrativeText = "The world holds its breath. Try a different action.";
+
+                eventStream.Emit(new AgentEvent("💬 Narrator response", "Narrator", AgentEventKind.Response,
+                    narrativeText[..Math.Min(60, narrativeText.Length)],
+                    narrativeText));
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Narrator failed");
                 narrativeText = $"⚠️ {ex.Message}\n\nTry a different action.";
+                eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, ex.Message));
             }
 
             logger.LogInformation("Narrative: {Length} chars", narrativeText.Length);
@@ -219,13 +229,21 @@ public class GameOrchestrator(
                 if (!string.IsNullOrEmpty(portableItems)) suggContext += $" Portable items to pick up: {portableItems}.";
                 if (hasHidden) suggContext += " (undiscovered things here)";
 
+                eventStream.Emit(new AgentEvent("📋 Suggestion prompt", "Suggestion", AgentEventKind.Prompt,
+                    suggContext[..Math.Min(60, suggContext.Length)],
+                    $"[System]\n{SuggestionSystemPrompt}\n\n[User]\n{suggContext}"));
+
                 var suggMessages = new List<ChatMessage>
                 {
                     new(ChatRole.System, SuggestionSystemPrompt),
                     new(ChatRole.User, suggContext)
                 };
                 var suggResp = await chatClient.GetResponseAsync(suggMessages, cancellationToken: cancellationToken);
-                suggestions = ParseSuggestions(suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "");
+                var suggText = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+                suggestions = ParseSuggestions(suggText);
+
+                eventStream.Emit(new AgentEvent("💬 Suggestion response", "Suggestion", AgentEventKind.Response,
+                    $"{suggestions.Count} actions", suggText));
                 logger.LogInformation("Suggestions: {Count}", suggestions.Count);
                 eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput));
             }
@@ -268,6 +286,10 @@ public class GameOrchestrator(
             if (!string.IsNullOrEmpty(landmarks)) userCtx += $" Landmarks (inspect only): {landmarks}.";
             userCtx += $" Action: {playerInput}. Narrative: {narrativeText[..Math.Min(120, narrativeText.Length)]}";
 
+            eventStream.Emit(new AgentEvent("📋 Resolver prompt", "ActionResolver", AgentEventKind.Prompt,
+                $"Action: {playerInput[..Math.Min(50, playerInput.Length)]}",
+                $"[System]\n{ActionResolverSystemPrompt}\n\n[User]\n{userCtx}"));
+
             var resolverMessages = new List<ChatMessage>
             {
                 new(ChatRole.System, ActionResolverSystemPrompt),
@@ -276,6 +298,10 @@ public class GameOrchestrator(
 
             var resolverResp = await chatClient.GetResponseAsync(resolverMessages, cancellationToken: cancellationToken);
             var resolverJson = resolverResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+
+            eventStream.Emit(new AgentEvent("💬 Resolver response", "ActionResolver", AgentEventKind.Response,
+                resolverJson[..Math.Min(60, resolverJson.Length)],
+                resolverJson));
 
             if (resolverJson.Contains("```"))
             {

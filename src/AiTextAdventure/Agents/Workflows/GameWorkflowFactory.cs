@@ -2,7 +2,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using AiTextAdventure.Agents;
 
-namespace AiTextAdventure.Workflows;
+namespace AiTextAdventure.Agents.Workflows;
 
 /// <summary>
 /// Creates a fresh handoff workflow for each player turn.

@@ -4,7 +4,8 @@ public record AgentEvent(
     string Title,
     string AgentName,
     AgentEventKind Kind,
-    string? Detail = null
+    string? Detail = null,
+    string? FullContent = null   // Full prompt text, response, tool args, etc. shown when expanded
 )
 {
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
@@ -13,6 +14,8 @@ public record AgentEvent(
 public enum AgentEventKind
 {
     AgentInvoked, AgentCompleted, AgentInput, AgentOutput,
+    Prompt,        // System/user prompt sent to LLM
+    Response,      // Full LLM response text
     ToolCall, ToolResult, Handoff,
     Streaming, WorkflowComplete, Error,
     SuperStepStarted, SuperStepCompleted,

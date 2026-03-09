@@ -447,45 +447,66 @@
                                    HorizontalTextAlignment="Center" />
                         </CollectionView.EmptyView>
                         <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:AgentEventViewModel">
-                                <StackLayout Margin="0,0,0,4">
-                                    <Frame BackgroundColor="{StaticResource CardBg}"
-                                           BorderColor="{StaticResource BorderSubtle}"
-                                           CornerRadius="4"
-                                           Padding="8,6"
-                                           HasShadow="False">
-                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                                            <Label Grid.Column="0"
-                                                   Text="{Binding Icon}"
-                                                   FontSize="12"
-                                                   VerticalOptions="Start" />
-                                            <StackLayout Grid.Column="1" Spacing="2">
-                                                <Grid ColumnDefinitions="*,Auto">
-                                                    <Label Grid.Column="0"
-                                                           Text="{Binding AgentName}"
-                                                           FontSize="10"
-                                                           FontAttributes="Bold"
-                                                           TextColor="{Binding AgentColor}" />
-                                                    <Label Grid.Column="1"
-                                                           Text="{Binding TimeStamp}"
-                                                           FontSize="9"
-                                                           TextColor="{StaticResource TextDim}" />
-                                                </Grid>
-                                                <Label Text="{Binding Title}"
-                                                       FontSize="11"
-                                                       TextColor="{StaticResource TextPrimary}" />
-                                                <Label Text="{Binding Detail}"
-                                                       FontSize="10"
-                                                       TextColor="{StaticResource TextMuted}"
-                                                       LineBreakMode="TailTruncation"
-                                                       MaxLines="2"
-                                                       IsVisible="{Binding Detail, Converter={StaticResource NotNullConverter}}" />
-                                            </StackLayout>
-                                        </Grid>
-                                    </Frame>
-                                </StackLayout>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
+                             <DataTemplate x:DataType="vm:AgentEventViewModel">
+                                 <StackLayout Margin="0,0,0,3">
+                                     <!-- Collapsed header row — tap to expand -->
+                                     <Frame BackgroundColor="{StaticResource CardBg}"
+                                            BorderColor="{StaticResource BorderSubtle}"
+                                            CornerRadius="4"
+                                            Padding="6,5"
+                                            HasShadow="False">
+                                         <Frame.GestureRecognizers>
+                                             <TapGestureRecognizer Command="{Binding ToggleCommand}" />
+                                         </Frame.GestureRecognizers>
+                                         <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="5">
+                                             <Label Grid.Column="0"
+                                                    Text="{Binding Icon}"
+                                                    FontSize="11"
+                                                    VerticalOptions="Center" />
+                                             <Label Grid.Column="1"
+                                                    Text="{Binding AgentName}"
+                                                    FontSize="10"
+                                                    FontAttributes="Bold"
+                                                    TextColor="{Binding AgentColor}"
+                                                    VerticalOptions="Center" />
+                                             <Label Grid.Column="2"
+                                                    Text="{Binding Title}"
+                                                    FontSize="10"
+                                                    TextColor="{StaticResource TextPrimary}"
+                                                    LineBreakMode="TailTruncation"
+                                                    VerticalOptions="Center"
+                                                    Margin="4,0,0,0" />
+                                             <Label Grid.Column="3"
+                                                    Text="{Binding TimeStamp}"
+                                                    FontSize="9"
+                                                    TextColor="{StaticResource TextDim}"
+                                                    VerticalOptions="Center" />
+                                             <Label Grid.Column="4"
+                                                    Text="{Binding ExpandIcon}"
+                                                    FontSize="9"
+                                                    TextColor="{StaticResource TextMuted}"
+                                                    IsVisible="{Binding HasFullContent}"
+                                                    VerticalOptions="Center"
+                                                    Margin="4,0,0,0" />
+                                         </Grid>
+                                     </Frame>
+                                     <!-- Expanded detail panel — shown when IsExpanded = true -->
+                                     <Frame IsVisible="{Binding IsExpanded}"
+                                            BackgroundColor="#1e1e2e"
+                                            BorderColor="{StaticResource BorderSubtle}"
+                                            CornerRadius="4"
+                                            Padding="8,6"
+                                            HasShadow="False"
+                                            Margin="8,0,0,0">
+                                         <Label Text="{Binding FullContent}"
+                                                FontSize="10"
+                                                FontFamily="Courier New"
+                                                TextColor="{StaticResource TextMuted}"
+                                                LineBreakMode="WordWrap" />
+                                     </Frame>
+                                 </StackLayout>
+                             </DataTemplate>
+                         </CollectionView.ItemTemplate>
                     </CollectionView>
                 </Grid>
 

@@ -11,6 +11,18 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
     public string AgentName => evt.AgentName;
     public string Title => evt.Title;
     public string? Detail => evt.Detail;
+    public string? FullContent => evt.FullContent;
+
+    public bool HasFullContent => !string.IsNullOrWhiteSpace(evt.FullContent);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExpandIcon))]
+    private bool isExpanded = false;
+
+    public string ExpandIcon => IsExpanded ? "▼" : "▶";
+
+    [RelayCommand]
+    private void Toggle() => IsExpanded = !IsExpanded;
 
     public string Icon => evt.Kind switch
     {
@@ -18,10 +30,12 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
         AgentEventKind.AgentCompleted => "✅",
         AgentEventKind.AgentInput => "📥",
         AgentEventKind.AgentOutput => "📤",
+        AgentEventKind.Prompt => "📋",
+        AgentEventKind.Response => "💬",
         AgentEventKind.ToolCall => "🔧",
-        AgentEventKind.ToolResult => "🔧",
+        AgentEventKind.ToolResult => "📦",
         AgentEventKind.Handoff => "🤝",
-        AgentEventKind.Streaming => "💬",
+        AgentEventKind.Streaming => "⏳",
         AgentEventKind.WorkflowComplete => "🏁",
         AgentEventKind.Error => "❌",
         AgentEventKind.SuperStepStarted => "⏩",
@@ -37,6 +51,8 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
         AgentEventKind.WorkflowComplete => Colors.LightGreen,
         AgentEventKind.Handoff => Colors.Orange,
         AgentEventKind.ToolCall or AgentEventKind.ToolResult => Colors.Violet,
+        AgentEventKind.Prompt => Color.FromArgb("#5B9BD5"),
+        AgentEventKind.Response => Color.FromArgb("#70AD47"),
         AgentEventKind.Streaming => Colors.CornflowerBlue,
         AgentEventKind.AgentInvoked => Colors.Gold,
         _ => Color.FromArgb("#7A7A9A")
