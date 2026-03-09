@@ -18,23 +18,14 @@ public class MapService(
     EventStream eventStream,
     ILogger<MapService> logger)
 {
-    // Kept very short for Apple Intelligence's small context window.
-    // Biome values must match the BiomeKind enum string members exactly (lowercase).
     private const string TileGenSystemPrompt = """
-        Output ONLY valid JSON with no markdown fences, no explanation, no extra text.
-        Schema: {"Biome":"forest","LocationName":"Evocative Name","Description":"One vivid sentence.","Atmosphere":"brief mood","Features":["immovable landmark"],"HiddenItems":["healing item","food item","weapon","armor item","dangerous creature or trap"]}
-        Biome rules:
-        - Choose from: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra
-        - Must be geographically compatible with any neighbours listed
-        - Transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins
-        Features rules:
-        - 1-2 large IMMOVABLE landmarks only (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, ancient tree, boulder, pool)
-        - Player can EXAMINE but NOT pick these up
-        HiddenItems rules:
-        - Exactly 5 PORTABLE items the player can pick up
-        - One each of: healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, venomous creature/trap
-        - Use specific evocative names, never "item1" or "feature1"
-        - Farther from origin (Dist) = more dangerous/exotic
+        You are a world-builder for a text adventure game. Generate a single map location.
+        Biome must be geographically compatible with any neighbouring tiles listed.
+        Valid biomes: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra.
+        Biome transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins.
+        Features are 1-2 large IMMOVABLE landmarks (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, ancient tree, boulder, pool). Players can examine but not pick them up.
+        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: healing herb/potion/salve, food ration/fruit/bread, knife/sword/axe, cloak/bracers/shield, venomous creature/trap.
+        Use specific evocative names. Farther from origin (Dist) = more dangerous/exotic.
         """;
 
     // Direction → (dx, dy) mapping

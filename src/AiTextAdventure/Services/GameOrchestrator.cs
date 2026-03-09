@@ -34,28 +34,21 @@ public class GameOrchestrator(
         - Pure prose. No lists, headings, or game mechanics language.
         """;
 
-    // ActionResolver: detects pickup/drop. Movement is now handled by MapService keyword detection.
+    // ActionResolver: detects pickup/drop. Movement is handled by MapService keyword detection.
     private const string ActionResolverSystemPrompt = """
-        Resolve game state changes. Output ONLY valid JSON (no markdown):
-        {"ItemsPickedUp":[],"ItemsDropped":[],"EntitiesRemoved":[],"NewEntities":[]}
-        Rules:
-        - ItemsPickedUp: [{"ItemName":"name","Description":"brief desc"}] ONLY for PORTABLE items in the "Portable items" list.
-        - NEVER put landmarks, ruins, caves, altars, statues, fountains, bridges, towers, trees, rocks, campfires, or any structure into ItemsPickedUp — they cannot be picked up.
-        - Only physical hand-held objects belong in ItemsPickedUp: potions, herbs, food, weapons (knife/sword/axe), armor (cloak/bracers/shield), gems, scrolls, keys, coins.
-        - ItemsDropped: item name strings the player explicitly dropped.
-        - EntitiesRemoved: names to remove from portable items list (picked up or destroyed).
-        - NewEntities: newly created/discovered portable entity names.
-        - If nothing changed, return all empty arrays.
+        You are a game state resolver for a text adventure. Determine what changed after the player's action.
+        Only report changes that clearly happened based on the player's action and the narrative.
+        ItemsPickedUp: ONLY physical hand-held PORTABLE objects — potions, herbs, food, weapons (knife/sword/axe), armor (cloak/bracers/shield), gems, scrolls, keys, coins.
+        NEVER include landmarks, ruins, caves, altars, statues, fountains, bridges, towers, trees, rocks, campfires, or any structure — these are immovable and cannot be picked up.
+        If nothing changed, return all empty arrays.
         """;
 
     private const string SuggestionSystemPrompt = """
-        Output ONLY valid JSON (no markdown):
-        {"Actions":[{"Label":"short label","ActionText":"action text"},{"Label":"label2","ActionText":"action2"},{"Label":"label3","ActionText":"action3"}]}
-        Generate exactly 3 short action suggestions. Rules:
-        - Include "go north/south/east/west" if exits exist.
-        - If not looked around yet: include {"Label":"Look around","ActionText":"look around carefully"}.
-        - Reference specific items from context when available.
-        - Label: 2-4 words. ActionText: 4-8 words.
+        You are a game assistant for a text adventure. Suggest exactly 3 short player actions.
+        Include at least one movement direction (go north/south/east/west) and one interaction.
+        If the player has not looked around yet, include "look around carefully".
+        Reference specific items or features from context when available.
+        Labels should be 2-4 words. Action text should be 4-8 words.
         """;
 
     public async Task<GameTurnResult> InitializeGameAsync(
