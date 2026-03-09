@@ -21,8 +21,8 @@ public class EquipItemTool(ToolContext ctx)
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
         if (invItem is null) return $"'{itemName}' is not in your inventory.";
         // Check effect directly — not IsEquippable, which may be stale if effect was set after pickup
-        var isWeapon = invItem.Effect.StartsWith("weapon", StringComparison.OrdinalIgnoreCase);
-        var isArmor  = invItem.Effect.StartsWith("armor", StringComparison.OrdinalIgnoreCase);
+        var isWeapon = invItem.Effect?.StartsWith("weapon", StringComparison.OrdinalIgnoreCase) == true;
+        var isArmor  = invItem.Effect?.StartsWith("armor",  StringComparison.OrdinalIgnoreCase) == true;
 
         if (!isWeapon && !isArmor)
             return $"'{itemName}' cannot be equipped. It may have been picked up without a weapon/armor effect set. Try dropping it and picking it up again, or use use_item if it's consumable.";
@@ -40,7 +40,7 @@ public class EquipItemTool(ToolContext ctx)
         else
         {
             stats.EquippedArmor = invItem.ItemName;
-            if (invItem.Effect.Length > 6 && int.TryParse(invItem.Effect.AsSpan(6), out var armorVal))
+            if (invItem.Effect is { Length: > 6 } eff && int.TryParse(eff.AsSpan(6), out var armorVal))
                 stats.Armor = armorVal;
             resultMsg = $"You equip the {invItem.ItemName} (+{stats.Armor} armor).";
             ctx.EmitToolResult("🛡️", $"equipped armor: {invItem.ItemName} (+{stats.Armor})", resultMsg);

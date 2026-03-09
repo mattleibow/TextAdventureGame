@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AiTextAdventure.Services.Observability;
@@ -15,18 +16,49 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 
     public bool HasFullContent => !string.IsNullOrWhiteSpace(evt.FullContent);
 
-    // Turn grouping
+    // ── Turn grouping ────────────────────────────────────────────────────────
     public bool IsTurnHeader => evt.Kind == AgentEventKind.TurnStart;
     public bool IsRegularEvent => evt.Kind != AgentEventKind.TurnStart;
     public string TurnLabel => $"⏱ {evt.Title}  —  {(evt.Detail is { Length: > 0 } d ? $"\"{d}\"" : "")}";
 
+    // Turn collapse/expand:
+    // - Turn header VMs own IsExpanded and toggle on tap
+    // - Regular event VMs hold a reference to their parent turn header and derive IsVisible from it
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandIcon), nameof(IsExpandedContent))]
-    private bool isExpanded = false;
+    private bool isExpanded = true;
 
+    private AgentEventViewModel? _parentTurn;
+    public AgentEventViewModel? ParentTurn
+    {
+        get => _parentTurn;
+        set
+        {
+            if (_parentTurn is not null) _parentTurn.PropertyChanged -= OnParentPropertyChanged;
+            _parentTurn = value;
+            if (_parentTurn is not null) _parentTurn.PropertyChanged += OnParentPropertyChanged;
+            OnPropertyChanged(nameof(IsVisible));
+        }
+    }
+
+    private void OnParentPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IsExpanded)) OnPropertyChanged(nameof(IsVisible));
+    }
+
+    /// <summary>
+    /// True when this item should be visible in the list.
+    /// Turn headers are always visible. Regular events are visible when their parent turn is expanded.
+    /// </summary>
+    public bool IsVisible => IsTurnHeader || (_parentTurn?.IsExpanded ?? true);
+
+    /// <summary>True when this is a regular event AND the user has tapped to expand its full content.</summary>
     public bool IsExpandedContent => IsExpanded && IsRegularEvent;
+
     public string ExpandIcon => IsExpanded ? "▼" : "▶";
 
+    // Turn header: tap toggles collapse/expand of the whole turn
+    // Regular event: tap toggles the full-content panel
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;
 
@@ -69,6 +101,7 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 public partial class EventsPanelViewModel : ObservableObject
 {
     private readonly EventStream _eventStream;
+    private AgentEventViewModel? _currentTurnHeader;
 
     [ObservableProperty]
     private bool isVisible = true;
@@ -83,10 +116,24 @@ public partial class EventsPanelViewModel : ObservableObject
 
     private void OnEventEmitted(AgentEvent evt)
     {
-        // EventEmitted fires on the emitting thread (may be background).
-        // Marshal the collection update to the main thread.
         MainThread.BeginInvokeOnMainThread(() =>
-            Events.Add(new AgentEventViewModel(evt)));
+        {
+            var vm = new AgentEventViewModel(evt);
+            if (evt.Kind == AgentEventKind.TurnStart)
+            {
+                // Collapse the previous turn so the list stays readable
+                if (_currentTurnHeader is not null)
+                    _currentTurnHeader.IsExpanded = false;
+                _currentTurnHeader = vm;
+                // New turns start expanded
+                vm.IsExpanded = true;
+            }
+            else
+            {
+                vm.ParentTurn = _currentTurnHeader;
+            }
+            Events.Add(vm);
+        });
     }
 
     [RelayCommand]
@@ -94,7 +141,11 @@ public partial class EventsPanelViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearEvents() =>
-        MainThread.BeginInvokeOnMainThread(() => Events.Clear());
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            Events.Clear();
+            _currentTurnHeader = null;
+        });
 
     public void Unsubscribe() => _eventStream.EventEmitted -= OnEventEmitted;
 }
