@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
@@ -279,13 +278,12 @@ public class MapService(
                 userPrompt,
                 $"[System]\n{TileGenSystemPrompt}\n\n[User]\n{userPrompt}"));
 
-            // Use structured output with TileGenResponse DTO (has [Description] attrs + BiomeKind enum).
-            // useJsonSchemaResponseFormat:false because Apple Intelligence ignores the ResponseFormat
-            // constraint and may fail if the mode is unsupported. The system prompt handles schema
-            // communication instead.
-            var tileData = await GetStructuredAsync(
-                messages, GameJsonContext.Default.TileGenResponse, ct,
-                label: $"TileGen ({x},{y})");
+            var response = await chatClient.GetResponseAsync<TileGenResponse>(messages, cancellationToken: ct);
+            var rawJson = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            eventStream.Emit(new AgentEvent($"💬 TileGen response ({x},{y})", "WorldGen", AgentEventKind.Response,
+                rawJson[..Math.Min(60, rawJson.Length)], rawJson));
+
+            var tileData = response.Result;
 
             if (tileData is not null && !string.IsNullOrEmpty(tileData.LocationName))
             {
@@ -314,54 +312,6 @@ public class MapService(
         }
 
         return FallbackTile(saveSlotId, x, y);
-    }
-
-    /// <summary>
-    /// Calls GetResponseAsync&lt;T&gt; with useJsonSchemaResponseFormat:false (Apple Intelligence
-    /// compatibility) and falls back to manual markdown-stripped deserialization if TryGetResult fails.
-    /// Emits a Response event with the raw text.
-    /// </summary>
-    private async Task<T?> GetStructuredAsync<T>(
-        IEnumerable<ChatMessage> messages,
-        System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo,
-        CancellationToken ct,
-        string label = "AI")
-        where T : class
-    {
-        // Pass serializerOptions so the extension can generate a JSON schema for the prompt,
-        // but disable ResponseFormat injection (useJsonSchemaResponseFormat:false) because
-        // Apple Intelligence doesn't support that constraint.
-        var response = await chatClient.GetResponseAsync<T>(
-            messages, GameJsonContext.Default.Options,
-            useJsonSchemaResponseFormat: false,
-            cancellationToken: ct);
-
-        var rawText = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-        eventStream.Emit(new AgentEvent($"💬 {label} response", "WorldGen", AgentEventKind.Response,
-            rawText[..Math.Min(60, rawText.Length)],
-            rawText));
-
-        // Primary: use the library's built-in deserialization
-        if (response.TryGetResult(out var result) && result is not null)
-            return result;
-
-        // Fallback: strip any markdown fences and try manual deserialization
-        logger.LogWarning("{Label}: TryGetResult failed, attempting markdown-strip fallback", label);
-        var json = rawText;
-        if (json.Contains('{'))
-        {
-            var s = json.IndexOf('{');
-            var e = json.LastIndexOf('}');
-            if (s >= 0 && e > s)
-                json = json[s..(e + 1)];
-        }
-
-        try { return JsonSerializer.Deserialize(json, typeInfo); }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "{Label}: Fallback deserialization also failed. Raw: {Raw}", label, rawText[..Math.Min(200, rawText.Length)]);
-            return null;
-        }
     }
 
     private static string ValidateBiome(string biome, Dictionary<(int, int), MapTile> existing, int x, int y)
