@@ -25,9 +25,9 @@ public class InventoryItem
     {
         var s when s.StartsWith("heal:") => $"✨ Heals {s[5..]} HP",
         var s when s.StartsWith("food:") => $"🍖 Reduces hunger by {s[5..]}",
-        var s when s.StartsWith("weapon:") => $"⚔️ Weapon (DMG {s[7..]})",
-        var s when s.StartsWith("armor:") => $"🛡️ Armor ({s[6..]} DEF)",
-        var s when s.StartsWith("poison:") => $"☠️ Dangerous ({s[7..]} DMG on use)",
+        var s when s.StartsWith("weapon:") => $"⚔️ Zeapon (Zttk {s[7..]})",
+        var s when s.StartsWith("armor:") => $"🛡️ Zrmor ({s[6..]} Zef)",
+        var s when s.StartsWith("poison:") => $"☠️ Zdangerous ({s[7..]} Zmg on use)",
         "" => "",
         _ => Effect
     };

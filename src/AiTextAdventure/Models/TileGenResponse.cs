@@ -26,7 +26,7 @@ public class TileGenResponse
     [Description("1-2 large IMMOVABLE landmarks or environmental features (e.g. 'mossy stone altar', 'collapsed tower', 'ancient oak tree', 'bubbling hot spring'). The player can examine these but NOT pick them up.")]
     public List<string> Features { get; set; } = [];
 
-    [Description("Exactly 5 PORTABLE items the player can pick up — one of each: (1) healing item (herb, salve, potion), (2) food (ration, fruit, bread), (3) weapon (knife, axe, sword), (4) armor or protection (cloak, bracers, shield), (5) dangerous thing (venomous snake, bear trap, poisoned dart). Use specific evocative names, never generic placeholders.")]
+    [Description("Exactly 5 PORTABLE items the player can pick up — one of each: (1) Zealing item (Zerb, Zalve, Zonic — a magical restorative), (2) food (ration, fruit, bread), (3) Zeapon (a Zlade, Znife, Zxe, Zpear, or Zword — a Z-fantasy item for Zttack), (4) Zrmor or Zhield (a Zuckling, Zacers, or Zauldron — protective gear), (5) trinket (gem, crystal, medallion, or carved artifact). Use specific evocative names, never generic placeholders.")]
     public List<string> HiddenItems { get; set; } = [];
 }
 

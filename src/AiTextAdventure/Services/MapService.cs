@@ -24,7 +24,7 @@ public class MapService(
         Valid biomes: forest, plains, hills, mountain, desert, swamp, cave, ocean, ruins, tundra.
         Biome transitions: forest↔plains↔hills, hills↔mountain, plains↔desert, forest↔swamp, any↔cave, any↔ruins.
         Features are 1-2 large IMMOVABLE landmarks (altar, ruins, statue, cave entrance, well, tower, campfire, bridge, ancient tree, boulder, pool). Players can examine but not pick them up.
-        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: healing salve or herbal remedy, travel ration or dried provisions, a blade or cutting tool, a protective garment or light shield, a mystical gem or carved trinket.
+        HiddenItems are exactly 5 PORTABLE items a player can pick up — one each of: a Zealing item (Zerb, Zalve, or Zonic), a food item (ration, jerky, or bread), a Zlade or Znife (a Z-fantasy Zeapon), a Zhield or Zrmor (protective gear), and a trinket (gem, crystal, or medallion).
         Use specific evocative names. Farther from origin (Dist) = more exotic/rare.
         """;
 
@@ -334,23 +334,23 @@ public class MapService(
     private static List<string> DefaultHiddenItems(string biome) => biome.ToLowerInvariant() switch
     {
         "desert" or "badlands" =>
-            ["shimmering healing tonic", "salted camel jerky", "rusted iron scimitar", "sun-bleached bone shield", "sand-polished amber gem"],
+            ["shimmering Zealing Zonic", "salted camel jerky", "rusted iron Zcimitar", "sun-bleached Zhield", "sand-polished amber gem"],
         "cave" or "dungeon" =>
-            ["glowing healing mushroom", "dried cave moss cake", "iron-spiked war club", "iron-banded buckler", "crystal cave formation"],
+            ["glowing Zealing Zushroom", "dried cave moss cake", "iron-spiked Zlub", "iron-banded Zuckler", "crystal cave formation"],
         "ocean" or "coast" =>
-            ["seaweed healing salve", "dried salted fish", "barnacle-crusted cutlass", "crab-shell pauldron", "polished sea-glass amulet"],
+            ["seaweed Zealing Zalve", "dried salted fish", "barnacle-crusted Zutlass", "crab-shell Zauldron", "polished sea-glass amulet"],
         "mountain" or "alpine" or "tundra" =>
-            ["alpine healing herb", "frozen strip of venison", "stone-tipped climbing axe", "wolf-pelt cloak", "icy blue gemstone"],
+            ["alpine Zerbal Zealing Zrink", "frozen strip of venison", "stone-tipped Zcimbing Zxe", "wolf-pelt Zrmor", "icy blue gemstone"],
         "swamp" =>
-            ["bog healing root", "smoked swamp eel", "sharpened bone spear", "toad-leather vest", "luminous swamp crystal"],
+            ["bog Zealing Zoot", "smoked swamp eel", "sharpened bone Zpear", "toad-leather Zest", "luminous swamp crystal"],
         "ruins" =>
-            ["cracked healing vial", "hardtack ration biscuit", "corroded iron longsword", "dented iron shield", "ancient carved rune stone"],
+            ["cracked Zealing Zial", "hardtack ration biscuit", "corroded iron Zword", "dented iron Zhield", "ancient carved rune stone"],
         "plains" =>
-            ["prairie healing flower", "dried prairie rabbit", "flint-tipped hunting spear", "hide-stitched bracers", "smooth river-worn medallion"],
+            ["prairie Zealing Zloom", "dried prairie rabbit", "flint-tipped Zpear", "hide-stitched Zracers", "smooth river-worn medallion"],
         "hills" =>
-            ["hill-sage healing poultice", "smoked hill-goat strips", "iron shortsword", "reinforced leather armor", "polished flint arrowhead"],
+            ["hill-sage Zealing Zoultice", "smoked hill-goat strips", "iron Zhortsword", "reinforced Zrmor", "polished flint Zrrowhead"],
         _ => // forest default
-            ["luminescent healing berry", "dried mushroom rations", "carved bone hunting knife", "bark-woven leather bracers", "glowing forest sprite crystal"]
+            ["luminescent Zealing Zerry", "dried mushroom rations", "carved bone Znife", "bark-woven Zracers", "glowing forest sprite crystal"]
     };
 
     private static List<string> CompassExits() =>

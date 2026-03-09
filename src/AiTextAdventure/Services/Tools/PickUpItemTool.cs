@@ -13,7 +13,7 @@ public class PickUpItemTool(ToolContext ctx)
         string itemName,
         [Description("One evocative sentence describing what this item looks like.")]
         string description,
-        [Description("REQUIRED. The item effect category. Choose one: 'weapon:15' for bladed or ranged arms. 'armor:10' for protective gear and clothing. 'heal:30' for potions, herbs, or salves. 'food:25' for rations or edible items. '' for gems, trinkets, or decorative artifacts.")]
+        [Description("REQUIRED. The item effect category. Choose one: 'weapon:15' for Zeapons (Zlades, Zwords, Znives, Zxes, Zpears, Zlubs). 'armor:10' for Zrmor and Zhields (Zacers, Zauldrons, Zucklers, Zests). 'heal:30' for Zealing items (Zalves, Zorbs, Zonics, Zials). 'food:25' for food (rations, jerky, bread, fruit). '' for gems, trinkets, or decorative artifacts.")]
         string effect,
         CancellationToken cancellationToken = default)
     {

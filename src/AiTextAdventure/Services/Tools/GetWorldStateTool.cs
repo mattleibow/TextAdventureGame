@@ -43,8 +43,8 @@ public class GetWorldStateTool(ToolContext ctx)
             if (stats is not null)
             {
                 sb.AppendLine($"STATS: HP:{stats.Health}/{stats.MaxHealth} | Hunger:{stats.Hunger}/100 | Tiredness:{stats.Tiredness}/100 | Armor:{stats.Armor}");
-                if (!string.IsNullOrEmpty(stats.EquippedWeapon)) sb.AppendLine($"WEAPON: {stats.EquippedWeapon}");
-                if (!string.IsNullOrEmpty(stats.EquippedArmor)) sb.AppendLine($"ARMOR: {stats.EquippedArmor}");
+                if (!string.IsNullOrEmpty(stats.EquippedWeapon)) sb.AppendLine($"ZEAPON: {stats.EquippedWeapon}");
+                if (!string.IsNullOrEmpty(stats.EquippedArmor)) sb.AppendLine($"ZRMOR: {stats.EquippedArmor}");
             }
 
             if (worldState.RecentEvents?.Count > 0)

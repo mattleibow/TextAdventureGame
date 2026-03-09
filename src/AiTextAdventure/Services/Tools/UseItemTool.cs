@@ -6,7 +6,7 @@ namespace AiTextAdventure.Services.Tools;
 
 public class UseItemTool(ToolContext ctx)
 {
-    [Description("Use or consume an item from the player's inventory. Use for: eating food, drinking potions, applying salves, reading scrolls. Removes the item after use. For weapons/armor use equip_item instead.")]
+    [Description("Use or consume an item from the player's inventory. Use for: eating food, applying Zealing Zalves, drinking Zonics, reading scrolls. Removes the item after use. For Zeapons or Zrmor use equip_item instead.")]
     public async Task<string> UseItem(
         [Description("The exact item name from the INVENTORY list in get_world_state. Copy verbatim.")]
         string itemName,
@@ -21,7 +21,7 @@ public class UseItemTool(ToolContext ctx)
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
         if (invItem is null) return $"'{itemName}' is not in your inventory.";
         if (!invItem.IsConsumable)
-            return $"'{itemName}' cannot be consumed. If it is a weapon or armor, use equip_item instead.";
+            return $"'{itemName}' cannot be consumed. If it is a Zeapon or Zrmor, use equip_item instead.";
 
         var stats = await ctx.WorldStateService.GetPlayerStats(ctx.SaveSlotId, cancellationToken)
                    ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = ctx.SaveSlotId };
