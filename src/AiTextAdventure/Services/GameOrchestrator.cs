@@ -26,24 +26,21 @@ public class GameOrchestrator(
     // Narrator: uses pre-generated tile data so it never invents locations or items.
     private const string NarratorSystemPrompt = """
         You are a text adventure narrator. Write vivid second-person present-tense prose.
-        - 2-3 sentences MAXIMUM.
-        - Use ONLY the location data provided — never invent places, items, or paths.
-        - Default: atmospheric mood only (sounds, smells, light). Do NOT list items.
-        - If action is "look around": describe the visible features and discovered items from context.
-        - If player tries something impossible: say so briefly, then describe what IS there.
-        - Pure prose. No lists, headings, or game mechanics language.
+        2-3 sentences MAXIMUM. Use ONLY the location data and events provided — never invent.
+        Describe atmospheric mood (sounds, smells, light) and react to what just happened.
+        Pure prose. No lists, headings, or game mechanics language.
         """;
 
-    // ActionResolver: resolves which exact world entities were affected by the player's action.
-    // Movement is handled separately by MapService keyword detection — do not report movement here.
+    // ActionResolver: the AI determines everything about the action — movement, items, exploring.
+    // All names MUST come verbatim from the provided entity lists.
     private const string ActionResolverSystemPrompt = """
-        You are a game state resolver for a text adventure. Your job is to determine which exact named
-        entities from the provided lists were affected by the player's action.
-        CRITICAL: All names in your response MUST be copied verbatim from the provided lists.
-        Never invent, paraphrase, abbreviate, or combine names. If the player says "pick up the sword"
-        and the list contains "weathered iron sword", use "weathered iron sword" — not "sword".
-        Only items from "Available portable items" can be picked up. Items in "Landmarks" are immovable.
-        If nothing changed or the player's action didn't interact with a listed item, return all empty arrays.
+        You are the action resolver for a text adventure game. Determine what the player is doing.
+        You are given exact lists of what exists in the world right now.
+        Copy ALL names VERBATIM from the provided lists — never paraphrase, abbreviate, or invent.
+        If the player says "pick up sword" and the list has "weathered iron sword", use "weathered iron sword".
+        Set MovementDirection to the direction string if the player is moving.
+        Set IsExploring to true if the player is looking around, searching, or examining the area.
+        For ItemsPickedUp, include the item's Effect: heal:N, food:N, weapon:N, armor:N, poison:N.
         """;
 
     private const string SuggestionSystemPrompt = """
@@ -110,396 +107,330 @@ public class GameOrchestrator(
         string playerInput,
         CancellationToken cancellationToken = default)
     {
-        var shortInput = playerInput[..Math.Min(60, playerInput.Length)];
-        logger.LogInformation("Turn: {Input}", shortInput);
+        logger.LogInformation("Turn: {Input}", playerInput[..Math.Min(60, playerInput.Length)]);
         eventStream.Emit(new AgentEvent($"▶ \"{playerInput[..Math.Min(40, playerInput.Length)]}\"", "GameMaster", AgentEventKind.AgentInvoked));
 
         var slot = await saveSlotService.GetSaveSlot(saveSlotId, cancellationToken);
         var gameName = slot?.Name ?? "Adventure";
-
         var worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
         var isOpeningScene = playerInput == "Describe the opening scene.";
-        var isLookAround = !isOpeningScene && IsLookAroundAction(playerInput);
 
-        // ── Pre-turn: Movement detection (keyword-based, no LLM call) ──────────
-        if (!isOpeningScene && !isLookAround)
+        ActionResult? actionResult = null;
+
+        // ── Step 1: ActionResolver — AI decides everything ─────────────────────
+        // For all non-opening turns, ask AI what happened before narration so the
+        // Narrator can describe the final state (post-movement, post-pickup, etc.).
+        if (!isOpeningScene && worldState is not null)
         {
-            var direction = MapService.DetectMovementDirection(playerInput);
-            if (direction is not null && worldState is not null)
+            actionResult = await ResolveActionAsync(worldState, playerInput, gameName, cancellationToken);
+
+            // Apply movement (AI decided direction)
+            if (!string.IsNullOrEmpty(actionResult?.MovementDirection))
             {
-                var (newTile, updatedState) = await mapService.MovePlayer(saveSlotId, worldState, direction, gameName, cancellationToken);
+                var (newTile, updatedState) = await mapService.MovePlayer(
+                    saveSlotId, worldState, actionResult.MovementDirection, gameName, cancellationToken);
                 worldState = updatedState;
                 await worldStateService.SaveState(worldState, cancellationToken);
-                eventStream.Emit(new AgentEvent($"🗺️ Moved {direction} → {newTile.LocationName} ({newTile.Biome})", "WorldGen", AgentEventKind.AgentOutput));
+                eventStream.Emit(new AgentEvent(
+                    $"🗺️ Moved {actionResult.MovementDirection} → {newTile.LocationName} ({newTile.Biome})",
+                    "WorldGen", AgentEventKind.AgentOutput));
             }
-        }
 
-        // ── Pre-turn: Look around — reveal hidden tile items ─────────────────
-        if (isLookAround && worldState is not null)
-        {
-            await mapService.RevealTile(saveSlotId, worldState.PlayerX, worldState.PlayerY, worldState, cancellationToken);
-            await worldStateService.SaveState(worldState, cancellationToken);
+            // Apply exploring (AI decided player is looking around)
+            if (actionResult?.IsExploring == true)
+            {
+                await mapService.RevealTile(saveSlotId, worldState.PlayerX, worldState.PlayerY, worldState, cancellationToken);
+                await worldStateService.SaveState(worldState, cancellationToken);
+                worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
+            }
+
+            // Apply state changes from ActionResult
+            if (actionResult is not null && worldState is not null)
+                await ApplyActionResultAsync(worldState, actionResult, playerInput, cancellationToken);
+
             worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
         }
 
-        // Get current tile for grounded narrator context
+        // ── Step 2: Narrator — describes the current state ─────────────────────
         var currentTile = worldState is not null
             ? await mapService.GetTile(saveSlotId, worldState.PlayerX, worldState.PlayerY, cancellationToken)
             : null;
         var tileContext = currentTile is not null
-            ? mapService.BuildTileContext(currentTile, isLookAround || (currentTile?.IsRevealed ?? false))
+            ? mapService.BuildTileContext(currentTile, currentTile.IsRevealed)
             : BuildFallbackContext(worldState);
 
+        string narrativeText;
         try
         {
-            // ── Step 1: Narrator — grounded in tile data ────────────────────────
             eventStream.Emit(new AgentEvent("Narrating...", "Narrator", AgentEventKind.AgentInvoked));
-            string narrativeText;
-            try
-            {
-                var narrativeMessages = new List<ChatMessage>
-                {
-                    new(ChatRole.System, NarratorSystemPrompt),
-                    new(ChatRole.User, $"{tileContext}\nAction: {playerInput}")
-                };
-                var promptSummary = $"{tileContext}\nAction: {playerInput}";
-                eventStream.Emit(new AgentEvent("📋 Narrator prompt", "Narrator", AgentEventKind.Prompt,
-                    promptSummary[..Math.Min(60, promptSummary.Length)],
-                    $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{promptSummary}"));
+            var actionSummary = BuildActionSummary(playerInput, actionResult);
+            var narratorInput = $"{tileContext}\n\n{actionSummary}";
+            eventStream.Emit(new AgentEvent("📋 Narrator prompt", "Narrator", AgentEventKind.Prompt,
+                narratorInput[..Math.Min(60, narratorInput.Length)],
+                $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{narratorInput}"));
 
-                var resp = await chatClient.GetResponseAsync(narrativeMessages, cancellationToken: cancellationToken);
-                narrativeText = resp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-                if (string.IsNullOrWhiteSpace(narrativeText))
-                    narrativeText = "The world holds its breath. Try a different action.";
+            var resp = await chatClient.GetResponseAsync(
+                [new(ChatRole.System, NarratorSystemPrompt), new(ChatRole.User, narratorInput)],
+                cancellationToken: cancellationToken);
+            narrativeText = resp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(narrativeText))
+                narrativeText = "The world holds its breath.";
 
-                eventStream.Emit(new AgentEvent("💬 Narrator response", "Narrator", AgentEventKind.Response,
-                    narrativeText[..Math.Min(60, narrativeText.Length)],
-                    narrativeText));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Narrator failed");
-                narrativeText = $"⚠️ {ex.Message}\n\nTry a different action.";
-                eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, ex.Message));
-            }
-
-            logger.LogInformation("Narrative: {Length} chars", narrativeText.Length);
-            eventStream.Emit(new AgentEvent("Narrative ready", "Narrator", AgentEventKind.AgentOutput,
-                narrativeText[..Math.Min(80, narrativeText.Length)]));
-
-            // ── Step 2: ActionResolver — pickup/drop (skip for opening/look-around) ─
-            if (worldState is not null && !isOpeningScene && !isLookAround)
-            {
-                await ResolveAndApplyActionAsync(worldState, playerInput, narrativeText, cancellationToken);
-                worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
-            }
-            else if (worldState is not null)
-            {
-                worldState.RecentEvents ??= [];
-                var evtPrefix = isLookAround ? "Looked around" : "Opening";
-                worldState.RecentEvents.Add($"{evtPrefix}: {narrativeText[..Math.Min(60, narrativeText.Length)]}");
-                if (worldState.RecentEvents.Count > 3) worldState.RecentEvents = worldState.RecentEvents[^3..];
-                await worldStateService.SaveState(worldState, cancellationToken);
-                worldState = await worldStateService.GetCurrentState(saveSlotId, cancellationToken);
-            }
-
-            // ── Step 2b: Item use/equip ──────────────────────────────────────────
-            if (!isOpeningScene)
-                await ApplyItemInteractionsAsync(saveSlotId, playerInput, narrativeText, cancellationToken);
-
-            // ── Step 2c: Stat decay ──────────────────────────────────────────────
-            if (!isOpeningScene)
-                await ApplyStatDecayAsync(saveSlotId, cancellationToken);
-
-            // ── Step 3: Suggestion ───────────────────────────────────────────────
-            eventStream.Emit(new AgentEvent("Suggesting...", "Suggestion", AgentEventKind.AgentInvoked));
-            List<SuggestedAction> suggestions;
-            try
-            {
-                var hasHidden = (worldState?.HiddenEntities?.Count ?? 0) > 0;
-                var portableItems = string.Join(", ", (worldState?.KnownEntities ?? []).Take(3));
-                var landmarks = string.Join(", ", (worldState?.LandmarkEntities ?? []).Take(2));
-                var suggContext = $"Location: {worldState?.CurrentLocation} ({worldState?.CurrentBiome}). Exits: north, south, east, west.";
-                if (!string.IsNullOrEmpty(landmarks)) suggContext += $" Landmarks to examine: {landmarks}.";
-                if (!string.IsNullOrEmpty(portableItems)) suggContext += $" Portable items to pick up: {portableItems}.";
-                if (hasHidden) suggContext += " (undiscovered things here)";
-
-                eventStream.Emit(new AgentEvent("📋 Suggestion prompt", "Suggestion", AgentEventKind.Prompt,
-                    suggContext[..Math.Min(60, suggContext.Length)],
-                    $"[System]\n{SuggestionSystemPrompt}\n\n[User]\n{suggContext}"));
-
-                var suggMessages = new List<ChatMessage>
-                {
-                    new(ChatRole.System, SuggestionSystemPrompt),
-                    new(ChatRole.User, suggContext)
-                };
-                var suggResp = await chatClient.GetResponseAsync<SuggestedActions>(suggMessages, cancellationToken: cancellationToken);
-                var rawSugg = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-                suggestions = suggResp.Result?.Actions is { Count: > 0 } acts ? acts : DefaultSuggestions(worldState);
-
-                eventStream.Emit(new AgentEvent("💬 Suggestion response", "Suggestion", AgentEventKind.Response,
-                    $"{suggestions.Count} actions", rawSugg));
-                logger.LogInformation("Suggestions: {Count}", suggestions.Count);
-                eventStream.Emit(new AgentEvent($"{suggestions.Count} suggestions", "Suggestion", AgentEventKind.AgentOutput));
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Suggestion failed, using context-aware defaults");
-                eventStream.Emit(new AgentEvent("Default suggestions", "Suggestion", AgentEventKind.AgentCompleted));
-                suggestions = DefaultSuggestions(worldState);
-            }
-
-            await PersistJournalEntry(saveSlotId, narrativeText, cancellationToken);
-            eventStream.Emit(new AgentEvent("💾 Journal saved", "Database", AgentEventKind.ToolResult));
-            await UpdateLastPlayed(saveSlotId, cancellationToken);
-
-            eventStream.Emit(new AgentEvent("Turn complete", "GameMaster", AgentEventKind.WorkflowComplete));
-            return new GameTurnResult(narrativeText, suggestions);
+            eventStream.Emit(new AgentEvent("💬 Narrator response", "Narrator", AgentEventKind.Response,
+                narrativeText[..Math.Min(60, narrativeText.Length)], narrativeText));
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Turn failed for {SaveSlotId}", saveSlotId);
-            eventStream.Emit(new AgentEvent("Turn failed", "GameMaster", AgentEventKind.Error, ex.Message));
-            return new GameTurnResult(
-                $"⚠️ The magical forces are disrupted... ({ex.Message})\n\nTry a different action.",
-                DefaultSuggestions(worldState));
+            logger.LogError(ex, "Narrator failed");
+            narrativeText = $"⚠️ {ex.Message}\n\nTry a different action.";
+            eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, ex.Message));
         }
+
+        // ── Step 3: Stat decay ───────────────────────────────────────────────────
+        if (!isOpeningScene)
+            await ApplyStatDecayAsync(saveSlotId, cancellationToken);
+
+        // ── Step 4: Suggestions ──────────────────────────────────────────────────
+        List<SuggestedAction> suggestions;
+        try
+        {
+            eventStream.Emit(new AgentEvent("Suggesting...", "Suggestion", AgentEventKind.AgentInvoked));
+            var hasHidden = (worldState?.HiddenEntities?.Count ?? 0) > 0;
+            var portableItems = string.Join(", ", (worldState?.KnownEntities ?? []).Take(3));
+            var landmarks = string.Join(", ", (worldState?.LandmarkEntities ?? []).Take(2));
+            var suggCtx = $"Location: {worldState?.CurrentLocation} ({worldState?.CurrentBiome}). Exits: north, south, east, west.";
+            if (!string.IsNullOrEmpty(landmarks)) suggCtx += $" Landmarks: {landmarks}.";
+            if (!string.IsNullOrEmpty(portableItems)) suggCtx += $" Portable items: {portableItems}.";
+            if (hasHidden) suggCtx += " (things to discover here)";
+
+            eventStream.Emit(new AgentEvent("📋 Suggestion prompt", "Suggestion", AgentEventKind.Prompt,
+                suggCtx[..Math.Min(60, suggCtx.Length)],
+                $"[System]\n{SuggestionSystemPrompt}\n\n[User]\n{suggCtx}"));
+
+            var suggResp = await chatClient.GetResponseAsync<SuggestedActions>(
+                [new(ChatRole.System, SuggestionSystemPrompt), new(ChatRole.User, suggCtx)],
+                cancellationToken: cancellationToken);
+            var rawSugg = suggResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            suggestions = suggResp.Result?.Actions is { Count: > 0 } acts ? acts : DefaultSuggestions(worldState);
+
+            eventStream.Emit(new AgentEvent("💬 Suggestion response", "Suggestion", AgentEventKind.Response,
+                $"{suggestions.Count} actions", rawSugg));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Suggestion failed");
+            suggestions = DefaultSuggestions(worldState);
+        }
+
+        await PersistJournalEntry(saveSlotId, narrativeText, cancellationToken);
+        await UpdateLastPlayed(saveSlotId, cancellationToken);
+        eventStream.Emit(new AgentEvent("Turn complete", "GameMaster", AgentEventKind.WorkflowComplete));
+        return new GameTurnResult(narrativeText, suggestions);
     }
 
-    private async Task ResolveAndApplyActionAsync(
+    /// <summary>
+    /// Calls the ActionResolver AI to determine what the player is doing.
+    /// The AI returns exact entity names, movement direction, and whether exploring.
+    /// </summary>
+    private async Task<ActionResult?> ResolveActionAsync(
         WorldState worldState,
         string playerInput,
-        string narrativeText,
+        string gameName,
         CancellationToken cancellationToken)
     {
         eventStream.Emit(new AgentEvent("Resolving action...", "ActionResolver", AgentEventKind.AgentInvoked));
         try
         {
-            // Load current inventory so the AI knows what the player can drop/use
             var allInvItems = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
             var inventoryNames = allInvItems
                 .Where(i => i.SaveSlotId == worldState.SaveSlotId)
                 .Select(i => i.ItemName)
                 .ToList();
 
-            // Build a clearly-labeled context so the AI can resolve exact entity names
             var lines = new System.Text.StringBuilder();
             lines.AppendLine($"Player said: \"{playerInput}\"");
-            lines.AppendLine($"What happened: {narrativeText[..Math.Min(120, narrativeText.Length)]}");
             lines.AppendLine();
             var portableItems = worldState.KnownEntities ?? [];
             lines.AppendLine($"Available portable items (can be picked up): [{string.Join(", ", portableItems.Select(i => $"\"{i}\""))}]");
             if (worldState.LandmarkEntities?.Count > 0)
-                lines.AppendLine($"Landmarks (immovable, examine only — NEVER pick up): [{string.Join(", ", worldState.LandmarkEntities.Select(l => $"\"{l}\""))}]");
+                lines.AppendLine($"Landmarks (immovable, examine only): [{string.Join(", ", worldState.LandmarkEntities.Select(l => $"\"{l}\""))}]");
             if (inventoryNames.Count > 0)
-                lines.AppendLine($"Player inventory (can be dropped or used): [{string.Join(", ", inventoryNames.Select(i => $"\"{i}\""))}]");
+                lines.AppendLine($"Player inventory (can be used, equipped, or dropped): [{string.Join(", ", inventoryNames.Select(i => $"\"{i}\""))}]");
             lines.AppendLine();
-            lines.AppendLine("Match the player's intent to exact names from the lists above.");
+            lines.AppendLine("Determine what the player is doing. Copy all names verbatim from the lists above.");
 
             var userCtx = lines.ToString().Trim();
-
             eventStream.Emit(new AgentEvent("📋 Resolver prompt", "ActionResolver", AgentEventKind.Prompt,
                 $"Action: {playerInput[..Math.Min(50, playerInput.Length)]}",
                 $"[System]\n{ActionResolverSystemPrompt}\n\n[User]\n{userCtx}"));
 
-            var resolverMessages = new List<ChatMessage>
-            {
-                new(ChatRole.System, ActionResolverSystemPrompt),
-                new(ChatRole.User, userCtx)
-            };
-
-            var resolverResp = await chatClient.GetResponseAsync<ActionResult>(resolverMessages, cancellationToken: cancellationToken);
+            var resolverResp = await chatClient.GetResponseAsync<ActionResult>(
+                [new(ChatRole.System, ActionResolverSystemPrompt), new(ChatRole.User, userCtx)],
+                cancellationToken: cancellationToken);
             var resolverJson = resolverResp.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-
             eventStream.Emit(new AgentEvent("💬 Resolver response", "ActionResolver", AgentEventKind.Response,
-                resolverJson[..Math.Min(60, resolverJson.Length)],
-                resolverJson));
+                resolverJson[..Math.Min(60, resolverJson.Length)], resolverJson));
 
-            var result = resolverResp.Result;
-            if (result is null)
-            {
-                eventStream.Emit(new AgentEvent("No state changes", "ActionResolver", AgentEventKind.AgentCompleted));
-                return;
-            }
-
-            logger.LogDebug("ActionResult: {Picked} picked, {Dropped} dropped", result.ItemsPickedUp.Count, result.ItemsDropped.Count);
-            var changes = new List<string>();
-
-            // Items picked up — AI now returns exact canonical names from the provided list
-            foreach (var item in result.ItemsPickedUp)
-            {
-                if (string.IsNullOrWhiteSpace(item.ItemName)) continue;
-
-                // Guard 1: verify the name is in the portable items list (AI should have used exact name)
-                var isKnown = (worldState.KnownEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
-                if (!isKnown)
-                {
-                    eventStream.Emit(new AgentEvent($"🚫 Not in portable list: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
-                    logger.LogInformation("Blocked pickup — not in KnownEntities: {Item} (known: {Known})", item.ItemName, string.Join(", ", worldState.KnownEntities ?? []));
-                    continue;
-                }
-
-                // Guard 2: safety net — must not be a landmark (should never trigger now that AI uses exact names)
-                var isInLandmarks = (worldState.LandmarkEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
-                if (isInLandmarks)
-                {
-                    eventStream.Emit(new AgentEvent($"🚫 Cannot pick up landmark: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
-                    logger.LogInformation("Blocked landmark pickup attempt: {Item}", item.ItemName);
-                    continue;
-                }
-
-                // Guard 3: keyword blocklist last-resort safety net
-                if (IsLandmarkByWords(item.ItemName))
-                {
-                    eventStream.Emit(new AgentEvent($"🚫 Blocked non-portable: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
-                    logger.LogInformation("Blocked non-portable keyword match: {Item}", item.ItemName);
-                    continue;
-                }
-
-                var effect = InferItemEffect(item.ItemName, item.Description);
-                if (effect.StartsWith("poison"))
-                {
-                    var stats = await worldStateService.GetPlayerStats(worldState.SaveSlotId, cancellationToken)
-                                ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId };
-                    ApplyEffect(stats, effect);
-                    await worldStateService.SavePlayerStats(stats, cancellationToken);
-                    changes.Add($"touched {item.ItemName} → damaged!");
-                    eventStream.Emit(new AgentEvent($"☠️ {item.ItemName} (dangerous!)", "ActionResolver", AgentEventKind.AgentOutput, $"HP → {stats.Health}"));
-                }
-                else
-                {
-                    var invItem = new InventoryItem
-                    {
-                        Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId,
-                        ItemName = item.ItemName, Description = item.Description, Quantity = 1,
-                        Effect = effect, IsConsumable = IsConsumableEffect(effect), IsEquippable = IsEquippableEffect(effect)
-                    };
-                    await store.Set(invItem.Id.ToString(), invItem, GameJsonContext.Default.InventoryItem, cancellationToken);
-                    changes.Add($"picked up {item.ItemName}");
-                    eventStream.Emit(new AgentEvent($"🎒 +{item.ItemName} [{effect}]", "Database", AgentEventKind.ToolResult));
-                    logger.LogInformation("Inventory: added {Item} effect={Effect}", item.ItemName, effect);
-                }
-                if (!result.EntitiesRemoved.Contains(item.ItemName))
-                    result.EntitiesRemoved.Add(item.ItemName);
-            }
-
-            // Items dropped
-            var isDropAction = playerInput.Contains("drop", StringComparison.OrdinalIgnoreCase)
-                            || playerInput.Contains("put down", StringComparison.OrdinalIgnoreCase);
-            if (isDropAction)
-            {
-                foreach (var droppedName in result.ItemsDropped)
-                {
-                    if (string.IsNullOrWhiteSpace(droppedName)) continue;
-                    var allItems = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
-                    var existing = allItems.FirstOrDefault(i => i.SaveSlotId == worldState.SaveSlotId &&
-                        i.ItemName.Equals(droppedName, StringComparison.OrdinalIgnoreCase));
-                    if (existing is not null)
-                    {
-                        await store.Remove<InventoryItem>(existing.Id.ToString(), cancellationToken);
-                        worldState.KnownEntities ??= [];
-                        if (!worldState.KnownEntities.Contains(droppedName))
-                            worldState.KnownEntities.Add(droppedName);
-                        changes.Add($"dropped {droppedName}");
-                        eventStream.Emit(new AgentEvent($"🗑 -{droppedName}", "Database", AgentEventKind.ToolResult));
-                    }
-                }
-            }
-
-            // Remove entities from world snapshot — AI now returns exact canonical names
-            worldState.KnownEntities ??= [];
-            foreach (var removed in result.EntitiesRemoved)
-            {
-                var idx = worldState.KnownEntities.FindIndex(e => e.Equals(removed, StringComparison.OrdinalIgnoreCase));
-                if (idx >= 0) worldState.KnownEntities.RemoveAt(idx);
-            }
-
-            // Also remove from the persistent MapTile
-            if (result.EntitiesRemoved.Count > 0)
-            {
-                var tile = await mapService.GetTile(worldState.SaveSlotId, worldState.PlayerX, worldState.PlayerY, cancellationToken);
-                if (tile is not null)
-                {
-                    var changed = false;
-                    foreach (var removed in result.EntitiesRemoved)
-                    {
-                        var fi = tile.Features.FindIndex(f => f.Equals(removed, StringComparison.OrdinalIgnoreCase));
-                        if (fi >= 0) { tile.Features.RemoveAt(fi); changed = true; }
-                        var hi = tile.HiddenItems.FindIndex(h => h.Equals(removed, StringComparison.OrdinalIgnoreCase));
-                        if (hi >= 0) { tile.HiddenItems.RemoveAt(hi); changed = true; }
-                    }
-                    if (changed) await store.Set(tile.Id.ToString(), tile, GameJsonContext.Default.MapTile, cancellationToken);
-                }
-            }
-
-            // New entities
-            foreach (var newEntity in result.NewEntities)
-            {
-                if (!string.IsNullOrWhiteSpace(newEntity) && !(worldState.KnownEntities ?? []).Contains(newEntity))
-                {
-                    (worldState.KnownEntities ??= []).Add(newEntity);
-                    changes.Add($"discovered {newEntity}");
-                }
-            }
-
-            worldState.RecentEvents ??= [];
-            var turnSummary = changes.Count > 0 ? string.Join(", ", changes) : playerInput[..Math.Min(40, playerInput.Length)];
-            worldState.RecentEvents.Add(turnSummary);
-            if (worldState.RecentEvents.Count > 3) worldState.RecentEvents = worldState.RecentEvents[^3..];
-
-            await worldStateService.SaveState(worldState, cancellationToken);
-            eventStream.Emit(new AgentEvent(changes.Count > 0 ? string.Join(", ", changes) : "no changes", "ActionResolver", AgentEventKind.AgentCompleted));
+            return resolverResp.Result;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "ActionResolver failed");
             eventStream.Emit(new AgentEvent("Resolver failed", "ActionResolver", AgentEventKind.Error, ex.Message));
-            worldState.RecentEvents ??= [];
-            worldState.RecentEvents.Add(playerInput[..Math.Min(40, playerInput.Length)]);
-            if (worldState.RecentEvents.Count > 3) worldState.RecentEvents = worldState.RecentEvents[^3..];
-            await worldStateService.SaveState(worldState, cancellationToken);
+            return null;
         }
     }
 
-    private async Task ApplyItemInteractionsAsync(Guid saveSlotId, string playerInput, string narrativeText, CancellationToken ct)
+    /// <summary>
+    /// Applies the AI-determined ActionResult to game state: pickups, drops, use, equip.
+    /// No keyword matching — the AI already resolved what happened.
+    /// </summary>
+    private async Task ApplyActionResultAsync(
+        WorldState worldState,
+        ActionResult result,
+        string playerInput,
+        CancellationToken cancellationToken)
     {
-        var lower = playerInput.ToLowerInvariant();
-        var isUse = lower.Contains("eat") || lower.Contains("drink") || lower.Contains("use") || lower.Contains("consume");
-        var isEquip = lower.Contains("equip") || lower.Contains("wield") || lower.Contains("wear") || lower.Contains("put on");
-        if (!isUse && !isEquip) return;
+        var changes = new List<string>();
 
-        var allItems = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, ct);
-        var inventory = allItems.Where(i => i.SaveSlotId == saveSlotId).ToList();
-        var targetItem = inventory.FirstOrDefault(i => lower.Contains(i.ItemName.ToLowerInvariant()));
-        if (targetItem is null) return;
+        // Items picked up — Guard 1: must be in KnownEntities (AI should have used exact name)
+        foreach (var item in result.ItemsPickedUp)
+        {
+            if (string.IsNullOrWhiteSpace(item.ItemName)) continue;
+            var isKnown = (worldState.KnownEntities ?? []).Any(e => e.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase));
+            if (!isKnown)
+            {
+                eventStream.Emit(new AgentEvent($"🚫 Not in portable list: {item.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
+                logger.LogInformation("Blocked pickup — not in KnownEntities: {Item}", item.ItemName);
+                continue;
+            }
 
-        if (isEquip && targetItem.IsEquippable)
-        {
-            var stats = await worldStateService.GetPlayerStats(saveSlotId, ct)
-                        ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = saveSlotId };
-            if (targetItem.Effect.StartsWith("weapon"))
+            // Store with AI-provided effect
+            var effect = item.Effect ?? "";
+            var invItem = new InventoryItem
             {
-                stats.EquippedWeapon = targetItem.ItemName;
-                eventStream.Emit(new AgentEvent($"⚔️ Equipped: {targetItem.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
-            }
-            else if (targetItem.Effect.StartsWith("armor"))
-            {
-                stats.EquippedArmor = targetItem.ItemName;
-                if (int.TryParse(targetItem.Effect[6..], out var armorVal)) stats.Armor = armorVal;
-                eventStream.Emit(new AgentEvent($"🛡️ Equipped: {targetItem.ItemName} (+{stats.Armor} armor)", "ActionResolver", AgentEventKind.AgentOutput));
-            }
-            await worldStateService.SavePlayerStats(stats, ct);
+                Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId,
+                ItemName = item.ItemName, Description = item.Description, Quantity = 1,
+                Effect = effect,
+                IsConsumable = effect.StartsWith("heal") || effect.StartsWith("food"),
+                IsEquippable = effect.StartsWith("weapon") || effect.StartsWith("armor"),
+            };
+            await store.Set(invItem.Id.ToString(), invItem, GameJsonContext.Default.InventoryItem, cancellationToken);
+            changes.Add($"picked up {item.ItemName}");
+            eventStream.Emit(new AgentEvent($"🎒 +{item.ItemName} [{effect}]", "Database", AgentEventKind.ToolResult));
+
+            if (!result.EntitiesRemoved.Contains(item.ItemName))
+                result.EntitiesRemoved.Add(item.ItemName);
         }
-        else if (isUse && targetItem.IsConsumable)
+
+        // Items used/consumed from inventory
+        foreach (var usedName in result.ItemsUsed)
         {
-            var stats = await worldStateService.GetPlayerStats(saveSlotId, ct)
-                        ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = saveSlotId };
-            ApplyEffect(stats, targetItem.Effect);
-            await worldStateService.SavePlayerStats(stats, ct);
-            eventStream.Emit(new AgentEvent($"✨ Used: {targetItem.ItemName}", "ActionResolver", AgentEventKind.AgentOutput, $"HP:{stats.Health} Hunger:{stats.Hunger}"));
-            await store.Remove<InventoryItem>(targetItem.Id.ToString(), ct);
-            eventStream.Emit(new AgentEvent($"🗑 Consumed: {targetItem.ItemName}", "Database", AgentEventKind.ToolResult));
+            if (string.IsNullOrWhiteSpace(usedName)) continue;
+            var allItems = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
+            var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == worldState.SaveSlotId &&
+                i.ItemName.Equals(usedName, StringComparison.OrdinalIgnoreCase));
+            if (invItem is null) continue;
+
+            var stats = await worldStateService.GetPlayerStats(worldState.SaveSlotId, cancellationToken)
+                        ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId };
+            ApplyEffect(stats, invItem.Effect);
+            await worldStateService.SavePlayerStats(stats, cancellationToken);
+            await store.Remove<InventoryItem>(invItem.Id.ToString(), cancellationToken);
+            changes.Add($"used {usedName}");
+            eventStream.Emit(new AgentEvent($"✨ Used: {usedName}", "ActionResolver", AgentEventKind.AgentOutput, $"HP:{stats.Health} Hunger:{stats.Hunger}"));
         }
+
+        // Items equipped
+        foreach (var equippedName in result.ItemsEquipped)
+        {
+            if (string.IsNullOrWhiteSpace(equippedName)) continue;
+            var allItems = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
+            var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == worldState.SaveSlotId &&
+                i.ItemName.Equals(equippedName, StringComparison.OrdinalIgnoreCase));
+            if (invItem is null) continue;
+
+            var stats = await worldStateService.GetPlayerStats(worldState.SaveSlotId, cancellationToken)
+                        ?? new PlayerStats { Id = Guid.NewGuid(), SaveSlotId = worldState.SaveSlotId };
+            if (invItem.Effect.StartsWith("weapon"))
+            {
+                stats.EquippedWeapon = invItem.ItemName;
+                eventStream.Emit(new AgentEvent($"⚔️ Equipped: {invItem.ItemName}", "ActionResolver", AgentEventKind.AgentOutput));
+            }
+            else if (invItem.Effect.StartsWith("armor"))
+            {
+                stats.EquippedArmor = invItem.ItemName;
+                if (int.TryParse(invItem.Effect.AsSpan(6), out var armorVal)) stats.Armor = armorVal;
+                eventStream.Emit(new AgentEvent($"🛡️ Equipped: {invItem.ItemName} (+{stats.Armor})", "ActionResolver", AgentEventKind.AgentOutput));
+            }
+            await worldStateService.SavePlayerStats(stats, cancellationToken);
+            changes.Add($"equipped {equippedName}");
+        }
+
+        // Items dropped
+        foreach (var droppedName in result.ItemsDropped)
+        {
+            if (string.IsNullOrWhiteSpace(droppedName)) continue;
+            var allItems = await store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
+            var existing = allItems.FirstOrDefault(i => i.SaveSlotId == worldState.SaveSlotId &&
+                i.ItemName.Equals(droppedName, StringComparison.OrdinalIgnoreCase));
+            if (existing is null) continue;
+            await store.Remove<InventoryItem>(existing.Id.ToString(), cancellationToken);
+            worldState.KnownEntities ??= [];
+            if (!worldState.KnownEntities.Contains(droppedName, StringComparer.OrdinalIgnoreCase))
+                worldState.KnownEntities.Add(droppedName);
+            changes.Add($"dropped {droppedName}");
+            eventStream.Emit(new AgentEvent($"🗑 -{droppedName}", "Database", AgentEventKind.ToolResult));
+        }
+
+        // Remove entities from world state and tile
+        worldState.KnownEntities ??= [];
+        foreach (var removed in result.EntitiesRemoved)
+        {
+            var idx = worldState.KnownEntities.FindIndex(e => e.Equals(removed, StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0) worldState.KnownEntities.RemoveAt(idx);
+        }
+
+        if (result.EntitiesRemoved.Count > 0)
+        {
+            var tile = await mapService.GetTile(worldState.SaveSlotId, worldState.PlayerX, worldState.PlayerY, cancellationToken);
+            if (tile is not null)
+            {
+                var changed = false;
+                foreach (var removed in result.EntitiesRemoved)
+                {
+                    var fi = tile.Features.FindIndex(f => f.Equals(removed, StringComparison.OrdinalIgnoreCase));
+                    if (fi >= 0) { tile.Features.RemoveAt(fi); changed = true; }
+                    var hi = tile.HiddenItems.FindIndex(h => h.Equals(removed, StringComparison.OrdinalIgnoreCase));
+                    if (hi >= 0) { tile.HiddenItems.RemoveAt(hi); changed = true; }
+                }
+                if (changed) await store.Set(tile.Id.ToString(), tile, GameJsonContext.Default.MapTile, cancellationToken);
+            }
+        }
+
+        worldState.RecentEvents ??= [];
+        worldState.RecentEvents.Add(changes.Count > 0 ? string.Join(", ", changes) : playerInput[..Math.Min(40, playerInput.Length)]);
+        if (worldState.RecentEvents.Count > 3) worldState.RecentEvents = worldState.RecentEvents[^3..];
+        await worldStateService.SaveState(worldState, cancellationToken);
+        eventStream.Emit(new AgentEvent(changes.Count > 0 ? string.Join(", ", changes) : "no changes", "ActionResolver", AgentEventKind.AgentCompleted));
+    }
+
+    private static string BuildActionSummary(string playerInput, ActionResult? result)
+    {
+        var lines = new System.Text.StringBuilder();
+        lines.AppendLine($"Player action: \"{playerInput}\"");
+        if (result is null) return lines.ToString().Trim();
+        if (!string.IsNullOrEmpty(result.MovementDirection))
+            lines.AppendLine($"Player moved: {result.MovementDirection}");
+        if (result.IsExploring)
+            lines.AppendLine("Player searched the area.");
+        foreach (var item in result.ItemsPickedUp)
+            lines.AppendLine($"Player picked up: {item.ItemName}");
+        foreach (var used in result.ItemsUsed)
+            lines.AppendLine($"Player used: {used}");
+        foreach (var equipped in result.ItemsEquipped)
+            lines.AppendLine($"Player equipped: {equipped}");
+        return lines.ToString().Trim();
     }
 
     private async Task ApplyStatDecayAsync(Guid saveSlotId, CancellationToken ct)
@@ -519,82 +450,6 @@ public class GameOrchestrator(
         catch (Exception ex) { logger.LogWarning(ex, "Stat decay failed (non-fatal)"); }
     }
 
-    // ── Effect helpers (shared with ActionResolver) ──────────────────────────
-
-    private static string InferItemEffect(string itemName, string description)
-    {
-        var text = (itemName + " " + description).ToLowerInvariant();
-        if (text.Contains("potion") || text.Contains("elixir") || text.Contains("tonic") ||
-            text.Contains("salve") || text.Contains("healing") || text.Contains("luminescent") ||
-            text.Contains("glowing") || text.Contains("health") || text.Contains("vial") && text.Contains("heal"))
-            return "heal:30";
-        if (text.Contains("ration") || text.Contains("bread") || text.Contains("fruit") ||
-            text.Contains("berry") || text.Contains("mushroom") || text.Contains("meat") ||
-            text.Contains("fish") || text.Contains("jerky") || text.Contains("dried") ||
-            text.Contains("food") || text.Contains("cake") || text.Contains("venison") ||
-            text.Contains("dates") || text.Contains("eel"))
-            return "food:25";
-        if (text.Contains("sword") || text.Contains("knife") || text.Contains("dagger") ||
-            text.Contains("axe") || text.Contains("blade") || text.Contains("spear") ||
-            text.Contains("bow") || text.Contains("mace") || text.Contains("staff") ||
-            text.Contains("club") || text.Contains("scimitar") || text.Contains("cutlass") ||
-            text.Contains("rapier") || text.Contains("sabre") || text.Contains("lance"))
-            return "weapon:15";
-        if (text.Contains("armor") || text.Contains("shield") || text.Contains("helm") ||
-            text.Contains("mail") || text.Contains("bracers") || text.Contains("gauntlet") ||
-            text.Contains("cloak") || text.Contains("pauldron") || text.Contains("buckler") ||
-            text.Contains("chainmail") || text.Contains("plate") || text.Contains("pelt") ||
-            text.Contains("vest") || text.Contains("cuirass"))
-            return "armor:10";
-        if (text.Contains("venom") || text.Contains("poison") || text.Contains("asp") ||
-            text.Contains("serpent") || text.Contains("viper") || text.Contains("spider") ||
-            text.Contains("stonefish") || text.Contains("adder") || text.Contains("venomous") ||
-            text.Contains("trap") || text.Contains("moccasin") || text.Contains("rattlesnake"))
-            return "poison:25";
-        return "";
-    }
-
-    private static bool IsConsumableEffect(string effect) => effect.StartsWith("heal") || effect.StartsWith("food");
-    private static bool IsEquippableEffect(string effect) => effect.StartsWith("weapon") || effect.StartsWith("armor");
-
-    /// <summary>
-    /// Returns true if the item name looks like a landmark/structure that cannot be picked up.
-    /// This is a hard safety net — the prompt and KnownEntities list are the primary guards.
-    /// </summary>
-    // Landmark keywords that, when they appear as a whole word, indicate a non-portable structure.
-    // Using word-boundary matching prevents false positives like "tower shield", "tree branch", "archery bow".
-    private static readonly HashSet<string> LandmarkWords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ruins", "ruin", "cave", "cavern", "grotto",
-        "altar", "shrine", "temple", "cathedral", "chapel",
-        "statue", "sculpture", "monument",
-        "fountain", "well",
-        "tower", "turret", "steeple",
-        "bridge",
-        "gate", "portal",
-        "campfire", "firepit", "bonfire",
-        "column", "pillar", "obelisk", "monolith",
-        "cairn",
-        "boulder", "cliff", "outcrop",
-        "pool", "pond", "lake", "marsh",
-        "waterfall", "stream", "river",
-        "road", "trail",
-        "rampart", "battlement",
-        "entrance", "passage",
-    };
-
-    /// <summary>
-    /// Returns true if any word in the item name is an exact match to a landmark keyword.
-    /// Uses word splitting to prevent false positives (e.g. "tower shield" is NOT a landmark;
-    /// only "tower" standalone triggers it).
-    /// </summary>
-    private static bool IsLandmarkByWords(string itemName)
-    {
-        // Split on spaces and common separators, check each token
-        var words = itemName.Split([' ', '-', '_', ','], StringSplitOptions.RemoveEmptyEntries);
-        return words.Any(w => LandmarkWords.Contains(w));
-    }
-
     private static void ApplyEffect(PlayerStats stats, string effect)
     {
         if (string.IsNullOrEmpty(effect)) return;
@@ -607,17 +462,6 @@ public class GameOrchestrator(
             case "food":   stats.Hunger = Math.Max(0, stats.Hunger - value); break;
             case "poison": case "danger": stats.Health = Math.Max(0, stats.Health - Math.Max(1, value - stats.Armor)); break;
         }
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static bool IsLookAroundAction(string input)
-    {
-        var lower = input.ToLowerInvariant();
-        return lower.Contains("look around") || lower.Contains("look about") ||
-               lower.Contains("examine area") || lower.Contains("examine surroundings") ||
-               lower.Contains("survey") || lower.Contains("scan area") ||
-               lower.Contains("search the area") || lower.Contains("search area");
     }
 
     private static string BuildFallbackContext(WorldState? w)

@@ -1,8 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Shiny.SqliteDocumentDb;
-using AiTextAdventure.Agents;
-using AiTextAdventure.Agents.Workflows;
 using AiTextAdventure.Models;
 using AiTextAdventure.Services;
 using AiTextAdventure.Services.Observability;
@@ -77,9 +75,6 @@ public static class MauiProgram
         services.AddSingleton<SaveSlotService>();
         services.AddSingleton<MapService>();
         services.AddSingleton<GameOrchestrator>();
-        // AgentFactory and GameWorkflowFactory retained for future multi-agent workflow use
-        services.AddSingleton<AgentFactory>();
-        services.AddSingleton<GameWorkflowFactory>();
 
         // -- ViewModels --
         services.AddTransient<MainMenuViewModel>();

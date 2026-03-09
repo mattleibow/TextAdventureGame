@@ -3,32 +3,46 @@ using System.ComponentModel;
 namespace AiTextAdventure.Models;
 
 /// <summary>
-/// Structured state changes returned by the ActionResolver agent.
-/// Applied to the database after each player action.
+/// Structured output from the ActionResolver agent.
+/// The AI determines everything: what was picked up, what was used, whether the player is
+/// moving or exploring. All names must be copied verbatim from the provided entity lists.
 /// </summary>
-[Description("State changes that result from the player's action. Use empty lists when nothing changed. All names MUST be copied verbatim from the provided lists — do not paraphrase, abbreviate, or invent names.")]
+[Description("State changes from the player's action. ALL item names must be copied verbatim from the provided lists. Do not paraphrase or invent names.")]
 public class ActionResult
 {
-    [Description("Items the player picked up. Each ItemName MUST be copied exactly from the 'Available portable items' list provided. Empty if the player did not pick anything up.")]
+    [Description("Items the player picked up from the world this turn. Each name must be copied exactly from the 'Available portable items' list. Empty if nothing was picked up.")]
     public List<PickedUpItem> ItemsPickedUp { get; set; } = [];
 
-    [Description("Names of inventory items the player explicitly dropped. Each name MUST be copied exactly from the 'Player inventory' list. Empty if nothing was dropped.")]
+    [Description("Inventory items the player used or consumed this turn (e.g. ate food, drank potion). Each name must be copied exactly from the 'Player inventory' list. Empty if nothing was used.")]
+    public List<string> ItemsUsed { get; set; } = [];
+
+    [Description("Inventory items the player equipped this turn (wielded weapon or worn armor). Each name must be copied exactly from the 'Player inventory' list. Empty if nothing was equipped.")]
+    public List<string> ItemsEquipped { get; set; } = [];
+
+    [Description("Items dropped from inventory onto the ground. Each name must be copied exactly from the 'Player inventory' list. Empty if nothing was dropped.")]
     public List<string> ItemsDropped { get; set; } = [];
 
-    [Description("Names of world entities to remove because they were picked up, consumed, or destroyed. Copy exact names from the provided lists. Empty if nothing was removed.")]
+    [Description("World entity names to remove after being picked up or destroyed. Copy exact names from provided lists. Empty if nothing was removed.")]
     public List<string> EntitiesRemoved { get; set; } = [];
 
-    [Description("New portable entity names that appeared in the world this turn. Empty if nothing new appeared.")]
-    public List<string> NewEntities { get; set; } = [];
+    [Description("If the player is moving, the direction: north, south, east, west, northeast, northwest, southeast, or southwest. Null if the player is NOT moving.")]
+    public string? MovementDirection { get; set; }
+
+    [Description("True if the player is searching, exploring, or looking around to discover what is hidden here. False otherwise.")]
+    public bool IsExploring { get; set; }
 }
 
+/// <summary>An item picked up by the player, including its game effect.</summary>
 [Description("An item the player picked up.")]
 public class PickedUpItem
 {
-    [Description("The item name copied EXACTLY from the 'Available portable items' list — no abbreviation, no paraphrasing.")]
+    [Description("Item name copied EXACTLY from the 'Available portable items' list — no abbreviation, no paraphrasing.")]
     public string ItemName { get; set; } = "";
 
     [Description("One sentence describing the item.")]
     public string Description { get; set; } = "";
+
+    [Description("The item's game effect when used: 'heal:N' restores N health, 'food:N' reduces hunger by N, 'weapon:N' gives N attack power, 'armor:N' gives N defense, 'poison:N' deals N damage. Use empty string if the item has no consumable/equippable effect.")]
+    public string Effect { get; set; } = "";
 }
 
