@@ -4,15 +4,18 @@ using Shiny.SqliteDocumentDb;
 using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
 using AiTextAdventure.Services.Observability;
+using AiTextAdventure.Services.Tools;
 
 namespace AiTextAdventure.Services;
 
 public record GameTurnResult(string Narrative, List<SuggestedAction> Suggestions);
 
 /// <summary>
-/// The AI Game Master. Processes player turns using tool calling.
-/// The AI decides which tools to invoke (move, look_around, pick_up_item, etc.),
-/// reads and writes game state through them, then narrates what happened.
+/// The AI Game Master. Drives every player turn via two phases:
+/// Phase 1 — tool calling: AI invokes game tools (move, look_around, pick_up_item, etc.) to execute
+///            the player's action and returns a vivid narrative.
+/// Phase 2 — structured output: AI returns <see cref="SuggestedActions"/> for the suggestion buttons.
+/// No response parsing. No if/else game logic. AI decides everything.
 /// </summary>
 public class GameMaster(
     IChatClient chatClient,
@@ -23,27 +26,35 @@ public class GameMaster(
     EventStream eventStream,
     ILogger<GameMaster> logger)
 {
+    /// <summary>
+    /// System prompt for Phase 1 (tool-calling). Guides the AI to use tools and write narrative.
+    /// Deliberately omits any format instructions — structured output handles suggestions separately.
+    /// </summary>
     private const string GameMasterSystemPrompt = """
-        You are the Game Master of a text adventure. You control the world through your tools.
-        
+        You are the Game Master of a text adventure. You have tools to read and change the game world.
+
         When the player gives you an action:
-        1. Call get_world_state to understand the current situation (items, stats, recent events)
-        2. Execute the player's intent using the right tools:
-           - Moving somewhere → move_player
-           - Looking around or searching → look_around
-           - Picking up an item → pick_up_item (only items listed in PORTABLE ITEMS)
+        1. Call get_world_state to understand the current situation.
+        2. Call get_current_tile to get the scene description.
+        3. Execute the player's intent using the right tool:
+           - Moving → move_player
+           - Searching/exploring → look_around
+           - Picking up an item → pick_up_item (only items in PORTABLE ITEMS)
            - Dropping an item → drop_item
-           - Eating, drinking, using an item → use_item
-           - Equipping a weapon or armor → equip_item
-           - Examining a landmark → describe it from get_current_tile data (no tool needed)
-        3. Write a vivid 2-4 sentence narrative in second-person present tense ("You step into...")
-        4. End your response with this exact line: SUGGESTIONS: <action1> | <action2> | <action3>
-        
-        Rules:
-        - You are the sole decision-maker. Use tools freely to read and write game state.
-        - Never invent items that aren't in PORTABLE ITEMS — only pick up what exists.
-        - Be creative and atmospheric in your narrative. React to what the tools return.
-        - Always end with SUGGESTIONS offering 3 distinct next actions (include at least one movement).
+           - Eating/drinking/using → use_item
+           - Equipping weapon or armor → equip_item
+           - Examining a landmark → use get_current_tile data (no extra tool needed)
+        4. Write a vivid 2-4 sentence narrative in second-person present tense.
+           React to what the tools returned. Be atmospheric and specific.
+
+        You are the sole decision-maker. Never invent items that are not in PORTABLE ITEMS.
+        """;
+
+    /// <summary>System prompt for Phase 2 (structured suggestions). Minimal, focused.</summary>
+    private const string SuggestionSystemPrompt = """
+        You are a game assistant for a text adventure. Suggest exactly 3 distinct player actions.
+        Include at least one movement direction and one interaction with the environment.
+        Reference specific items or features from context when available.
         """;
 
     public async Task<GameTurnResult> InitializeGameAsync(Guid saveSlotId, CancellationToken ct = default)
@@ -96,43 +107,70 @@ public class GameMaster(
         var slot = await saveSlotService.GetSaveSlot(saveSlotId, ct);
         var gameName = slot?.Name ?? "Adventure";
 
-        // Create per-turn tools capturing the current save slot context
-        var tools = new GameTools(saveSlotId, gameName, worldStateService, mapService, store, eventStream, logger);
-        var options = new ChatOptions { Tools = tools.GetAllTools() };
+        // ── Phase 1: Tool calling — AI uses tools to execute action and write narrative ──
+        var toolCtx = new ToolContext(saveSlotId, gameName, worldStateService, mapService, store, eventStream, logger);
+        var toolRegistry = new ToolRegistry(toolCtx);
+        var phase1Options = new ChatOptions { Tools = toolRegistry.GetAllTools() };
 
-        var messages = new List<ChatMessage>
+        var phase1Messages = new List<ChatMessage>
         {
             new(ChatRole.System, GameMasterSystemPrompt),
             new(ChatRole.User, playerInput)
         };
 
         string narrative;
-        List<SuggestedAction> suggestions;
         try
         {
-            eventStream.Emit(new AgentEvent("📋 Prompt", "GameMaster", AgentEventKind.Prompt,
+            eventStream.Emit(new AgentEvent("📋 GM prompt", "GameMaster", AgentEventKind.Prompt,
                 playerInput[..Math.Min(60, playerInput.Length)],
                 $"[System]\n{GameMasterSystemPrompt}\n\n[User]\n{playerInput}"));
 
-            // UseFunctionInvocation middleware handles the tool-calling loop automatically.
-            // The AI calls tools, receives results, then produces a final narrative response.
-            var response = await chatClient.GetResponseAsync(messages, options, ct);
-            var text = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            // UseFunctionInvocation() middleware manages the tool-calling loop.
+            // AI calls tools, gets results, reasons, calls more tools, then writes narrative.
+            var phase1Response = await chatClient.GetResponseAsync(phase1Messages, phase1Options, ct);
+            narrative = phase1Response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
 
-            eventStream.Emit(new AgentEvent("💬 Response", "GameMaster", AgentEventKind.Response,
-                text[..Math.Min(80, text.Length)], text));
+            if (string.IsNullOrWhiteSpace(narrative))
+                narrative = "The world shifts imperceptibly around you.";
 
-            (narrative, suggestions) = ParseTurnResponse(text);
+            eventStream.Emit(new AgentEvent("💬 GM narrative", "GameMaster", AgentEventKind.Response,
+                narrative[..Math.Min(80, narrative.Length)], narrative));
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "GameMaster turn failed");
-            narrative = $"The world seems to pause for a moment. ({ex.Message})";
-            suggestions = DefaultSuggestions();
-            eventStream.Emit(new AgentEvent("Turn failed", "GameMaster", AgentEventKind.Error, ex.Message));
+            logger.LogError(ex, "GameMaster phase 1 (tool calling) failed");
+            narrative = $"The world pauses. ({ex.Message})";
+            eventStream.Emit(new AgentEvent("Phase 1 failed", "GameMaster", AgentEventKind.Error, ex.Message));
         }
 
-        // Stat decay: automatic per-turn game mechanic (not an AI decision)
+        // ── Phase 2: Structured suggestions — GetResponseAsync<SuggestedActions> ──
+        List<SuggestedAction> suggestions;
+        try
+        {
+            var worldState = await worldStateService.GetCurrentState(saveSlotId, ct);
+            var suggCtx = BuildSuggestionContext(worldState, narrative);
+
+            eventStream.Emit(new AgentEvent("📋 Suggestion prompt", "Suggestion", AgentEventKind.Prompt,
+                suggCtx[..Math.Min(60, suggCtx.Length)],
+                $"[System]\n{SuggestionSystemPrompt}\n\n[User]\n{suggCtx}"));
+
+            var suggResponse = await chatClient.GetResponseAsync<SuggestedActions>(
+                [new(ChatRole.System, SuggestionSystemPrompt), new(ChatRole.User, suggCtx)],
+                cancellationToken: ct);
+
+            var rawSugg = suggResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            suggestions = suggResponse.Result?.Actions is { Count: > 0 } acts ? acts : DefaultSuggestions();
+
+            eventStream.Emit(new AgentEvent("💬 Suggestions", "Suggestion", AgentEventKind.Response,
+                $"{suggestions.Count} actions", rawSugg));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "GameMaster phase 2 (suggestions) failed — using defaults");
+            suggestions = DefaultSuggestions();
+        }
+
+        // ── Stat decay: automatic per-turn game mechanic ──
         await ApplyStatDecayAsync(saveSlotId, ct);
 
         await PersistJournalEntry(saveSlotId, narrative, ct);
@@ -141,40 +179,24 @@ public class GameMaster(
         return new GameTurnResult(narrative, suggestions);
     }
 
-    // ── Response parsing ─────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Parses the AI's free-text response. The Game Master ends responses with:
-    ///   SUGGESTIONS: action1 | action2 | action3
-    /// Everything before that line is the narrative.
-    /// </summary>
-    private static (string narrative, List<SuggestedAction> suggestions) ParseTurnResponse(string text)
+    /// <summary>Builds a compact context string for the suggestion AI call.</summary>
+    private static string BuildSuggestionContext(WorldState? worldState, string narrative)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            return ("The world holds its breath.", DefaultSuggestions());
-
-        var suggIdx = text.LastIndexOf("SUGGESTIONS:", StringComparison.OrdinalIgnoreCase);
-        if (suggIdx < 0)
-            return (text.Trim(), DefaultSuggestions());
-
-        var narrative = text[..suggIdx].Trim();
-        var suggLine = text[(suggIdx + 12)..].Trim();
-        var parts = suggLine.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        var suggestions = parts
-            .Where(p => !string.IsNullOrWhiteSpace(p))
-            .Select(p =>
-            {
-                var action = p.Trim();
-                var words = action.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var label = string.Join(' ', words.Take(3));
-                return new SuggestedAction(label, action);
-            })
-            .Take(5)
-            .ToList();
-
-        return (string.IsNullOrWhiteSpace(narrative) ? text.Trim() : narrative,
-                suggestions.Count > 0 ? suggestions : DefaultSuggestions());
+        var parts = new List<string>();
+        if (worldState is not null)
+        {
+            parts.Add($"Location: {worldState.CurrentLocation} ({worldState.CurrentBiome}).");
+            var items = worldState.KnownEntities ?? [];
+            if (items.Count > 0) parts.Add($"Visible items: {string.Join(", ", items.Take(3))}.");
+            var landmarks = worldState.LandmarkEntities ?? [];
+            if (landmarks.Count > 0) parts.Add($"Landmarks: {string.Join(", ", landmarks.Take(2))}.");
+            var hidden = worldState.HiddenEntities ?? [];
+            if (hidden.Count > 0) parts.Add("Unexplored items remain here.");
+        }
+        parts.Add($"Just happened: {narrative[..Math.Min(100, narrative.Length)]}");
+        return string.Join(' ', parts);
     }
 
     private static List<SuggestedAction> DefaultSuggestions() =>
@@ -183,8 +205,6 @@ public class GameMaster(
         new("Go north", "go north"),
         new("Check stats", "check my health and hunger"),
     ];
-
-    // ── Stat decay (automatic per-turn game mechanic) ─────────────────────────
 
     private async Task ApplyStatDecayAsync(Guid saveSlotId, CancellationToken ct)
     {
@@ -203,8 +223,6 @@ public class GameMaster(
         catch (Exception ex) { logger.LogWarning(ex, "Stat decay failed (non-fatal)"); }
     }
 
-    // ── Persistence helpers ──────────────────────────────────────────────────
-
     private async Task PersistJournalEntry(Guid saveSlotId, string text, CancellationToken ct)
     {
         try
@@ -212,8 +230,7 @@ public class GameMaster(
             var entry = new JournalEntry
             {
                 Id = Guid.NewGuid(), SaveSlotId = saveSlotId,
-                EntryText = text, Timestamp = DateTime.UtcNow,
-                Type = JournalEntryType.Narrative
+                EntryText = text, Timestamp = DateTime.UtcNow, Type = JournalEntryType.Narrative
             };
             await store.Set(entry.Id.ToString(), entry, GameJsonContext.Default.JournalEntry, ct);
         }
