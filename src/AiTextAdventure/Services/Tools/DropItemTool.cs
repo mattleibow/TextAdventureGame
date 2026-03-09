@@ -26,9 +26,21 @@ public class DropItemTool(ToolContext ctx)
         var worldState = await ctx.WorldStateService.GetCurrentState(ctx.SaveSlotId, cancellationToken);
         if (worldState is not null)
         {
+            // Update the in-memory world snapshot so the item shows immediately
             worldState.KnownEntities ??= [];
             if (!worldState.KnownEntities.Contains(invItem.ItemName, StringComparer.OrdinalIgnoreCase))
                 worldState.KnownEntities.Add(invItem.ItemName);
+
+            // Persist back to MapTile so the item survives when the player leaves and returns
+            var tile = await ctx.MapService.GetTile(ctx.SaveSlotId, worldState.PlayerX, worldState.PlayerY, cancellationToken);
+            if (tile is not null)
+            {
+                tile.HiddenItems ??= [];
+                if (!tile.HiddenItems.Contains(invItem.ItemName, StringComparer.OrdinalIgnoreCase))
+                    tile.HiddenItems.Add(invItem.ItemName);
+                await ctx.Store.Set(tile.Id.ToString(), tile, GameJsonContext.Default.MapTile, cancellationToken);
+            }
+
             await ctx.SaveRecentEvent(worldState, $"dropped {invItem.ItemName}", cancellationToken);
         }
 
