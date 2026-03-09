@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json.Serialization;
 
 namespace AiTextAdventure.Models;
 
@@ -31,19 +30,5 @@ public class PickedUpItem
 
     [Description("One sentence describing the item.")]
     public string Description { get; set; } = "";
-}
-
-/// <summary>Cardinal movement directions a player can travel.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<MovementDirection>))]
-public enum MovementDirection
-{
-    [JsonStringEnumMemberName("north")]     North,
-    [JsonStringEnumMemberName("south")]     South,
-    [JsonStringEnumMemberName("east")]      East,
-    [JsonStringEnumMemberName("west")]      West,
-    [JsonStringEnumMemberName("northeast")] Northeast,
-    [JsonStringEnumMemberName("northwest")] Northwest,
-    [JsonStringEnumMemberName("southeast")] Southeast,
-    [JsonStringEnumMemberName("southwest")] Southwest,
 }
 

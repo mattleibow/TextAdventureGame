@@ -28,8 +28,6 @@ namespace AiTextAdventure.Models;
 [JsonSerializable(typeof(SuggestedAction))]
 [JsonSerializable(typeof(ActionResult))]
 [JsonSerializable(typeof(PickedUpItem))]
-[JsonSerializable(typeof(MovementDirection))]
-[JsonSerializable(typeof(MovementDirection?))]
 [JsonSerializable(typeof(List<PickedUpItem>))]
 [JsonSerializable(typeof(List<SaveSlot>))]
 [JsonSerializable(typeof(List<WorldState>))]

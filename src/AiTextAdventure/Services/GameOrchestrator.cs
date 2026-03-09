@@ -288,7 +288,7 @@ public class GameOrchestrator(
             lines.AppendLine($"What happened: {narrativeText[..Math.Min(120, narrativeText.Length)]}");
             lines.AppendLine();
             var portableItems = worldState.KnownEntities ?? [];
-            lines.AppendLine($"Available portable items (can be picked up): [{string.Join(", ", portableItems.Select(i => $"\"{i}"))}]");
+            lines.AppendLine($"Available portable items (can be picked up): [{string.Join(", ", portableItems.Select(i => $"\"{i}\""))}]");
             if (worldState.LandmarkEntities?.Count > 0)
                 lines.AppendLine($"Landmarks (immovable, examine only — NEVER pick up): [{string.Join(", ", worldState.LandmarkEntities.Select(l => $"\"{l}\""))}]");
             if (inventoryNames.Count > 0)
