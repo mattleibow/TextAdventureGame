@@ -21,46 +21,31 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
     public bool IsRegularEvent => evt.Kind != AgentEventKind.TurnStart;
     public string TurnLabel => $"⏱ {evt.Title}  —  {(evt.Detail is { Length: > 0 } d ? $"\"{d}\"" : "")}";
 
-    // Turn collapse/expand:
-    // - Turn header VMs own IsExpanded and toggle on tap
-    // - Regular event VMs hold a reference to their parent turn header and derive IsVisible from it
+    // For turn headers: IsExpanded = whether this turn's events are visible.
+    // Toggled by tapping the header. When toggled, calls OnToggle (set by EventsPanelViewModel).
+    // For regular events: IsExpanded = whether the full-content panel is shown.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandIcon), nameof(IsExpandedContent))]
     private bool isExpanded = true;
 
-    private AgentEventViewModel? _parentTurn;
-    public AgentEventViewModel? ParentTurn
-    {
-        get => _parentTurn;
-        set
-        {
-            if (_parentTurn is not null) _parentTurn.PropertyChanged -= OnParentPropertyChanged;
-            _parentTurn = value;
-            if (_parentTurn is not null) _parentTurn.PropertyChanged += OnParentPropertyChanged;
-            OnPropertyChanged(nameof(IsVisible));
-        }
-    }
-
-    private void OnParentPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(IsExpanded)) OnPropertyChanged(nameof(IsVisible));
-    }
-
     /// <summary>
-    /// True when this item should be visible in the list.
-    /// Turn headers are always visible. Regular events are visible when their parent turn is expanded.
+    /// Callback invoked when this item is tapped.
+    /// Turn headers: set by EventsPanelViewModel to toggle + rebuild display collection.
+    /// Regular events: null (Toggle handles IsExpanded directly).
     /// </summary>
-    public bool IsVisible => IsTurnHeader || (_parentTurn?.IsExpanded ?? true);
+    public Action? OnToggle { get; set; }
 
-    /// <summary>True when this is a regular event AND the user has tapped to expand its full content.</summary>
     public bool IsExpandedContent => IsExpanded && IsRegularEvent;
-
     public string ExpandIcon => IsExpanded ? "▼" : "▶";
 
-    // Turn header: tap toggles collapse/expand of the whole turn
-    // Regular event: tap toggles the full-content panel
     [RelayCommand]
-    private void Toggle() => IsExpanded = !IsExpanded;
+    private void Toggle()
+    {
+        if (OnToggle is not null)
+            OnToggle(); // turn header: delegate to panel VM
+        else
+            IsExpanded = !IsExpanded; // regular event: toggle full-content panel
+    }
 
     public string Icon => evt.Kind switch
     {
@@ -101,11 +86,17 @@ public partial class AgentEventViewModel(AgentEvent evt) : ObservableObject
 public partial class EventsPanelViewModel : ObservableObject
 {
     private readonly EventStream _eventStream;
+    private readonly List<AgentEventViewModel> _allEvents = [];
     private AgentEventViewModel? _currentTurnHeader;
 
     [ObservableProperty]
     private bool isVisible = true;
 
+    /// <summary>
+    /// The filtered list bound to the CollectionView.
+    /// Only contains items that should be visible (turn headers + events of expanded turns).
+    /// Rebuilt whenever a turn is collapsed/expanded.
+    /// </summary>
     public ObservableCollection<AgentEventViewModel> Events { get; } = [];
 
     public EventsPanelViewModel(EventStream eventStream)
@@ -121,19 +112,55 @@ public partial class EventsPanelViewModel : ObservableObject
             var vm = new AgentEventViewModel(evt);
             if (evt.Kind == AgentEventKind.TurnStart)
             {
-                // Collapse the previous turn so the list stays readable
+                // Collapse the previous turn to keep the list compact
                 if (_currentTurnHeader is not null)
+                {
                     _currentTurnHeader.IsExpanded = false;
+                    // Rebuild display so collapsed events disappear
+                    RefreshDisplayEvents();
+                }
                 _currentTurnHeader = vm;
-                // New turns start expanded
                 vm.IsExpanded = true;
+                vm.OnToggle = () =>
+                {
+                    vm.IsExpanded = !vm.IsExpanded;
+                    RefreshDisplayEvents();
+                };
             }
-            else
-            {
-                vm.ParentTurn = _currentTurnHeader;
-            }
-            Events.Add(vm);
+            _allEvents.Add(vm);
+            // Only add to display if visible (turn header or expanded parent)
+            if (vm.IsTurnHeader || (_currentTurnHeader?.IsExpanded ?? true))
+                Events.Add(vm);
         });
+    }
+
+    private void RefreshDisplayEvents()
+    {
+        Events.Clear();
+        foreach (var vm in _allEvents)
+        {
+            // Turn headers are always in the display list
+            if (vm.IsTurnHeader)
+            {
+                Events.Add(vm);
+                continue;
+            }
+            // Regular events: find their parent turn header
+            var parentTurn = FindParentTurn(vm);
+            if (parentTurn?.IsExpanded ?? true)
+                Events.Add(vm);
+        }
+    }
+
+    private AgentEventViewModel? FindParentTurn(AgentEventViewModel regularEvent)
+    {
+        AgentEventViewModel? last = null;
+        foreach (var vm in _allEvents)
+        {
+            if (vm == regularEvent) return last;
+            if (vm.IsTurnHeader) last = vm;
+        }
+        return last;
     }
 
     [RelayCommand]
@@ -143,6 +170,7 @@ public partial class EventsPanelViewModel : ObservableObject
     private void ClearEvents() =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            _allEvents.Clear();
             Events.Clear();
             _currentTurnHeader = null;
         });
