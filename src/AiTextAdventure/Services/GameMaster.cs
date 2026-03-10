@@ -262,9 +262,6 @@ public class GameMaster(
 
                     narrative = response.Messages.LastOrDefault()?.Text?.Trim()
                         ?? "The world shifts imperceptibly around you.";
-
-                    toolCtx.EventStream.Emit(new AgentEvent("💬 Narrative", "Narrator", AgentEventKind.Response,
-                        narrative[..Math.Min(80, narrative.Length)], narrative));
                 }
                 catch (Exception ex)
                 {
@@ -299,9 +296,6 @@ public class GameMaster(
 
                     var acts = suggResponse.Result?.Actions is { Count: > 0 } a ? a : DefaultSuggestions();
                     onSuggestions(acts);
-
-                    toolCtx.EventStream.Emit(new AgentEvent("💬 Suggestions", "Suggestion", AgentEventKind.Response,
-                        $"{acts.Count} actions", string.Join(", ", acts.Select(a => a.Label))));
                 }
                 catch (Exception ex)
                 {
