@@ -19,6 +19,15 @@ public class ToolContext(
     EventStream eventStream,
     ILogger logger)
 {
+    /// <summary>
+    /// Per-turn mutex for world-state mutations.
+    /// UseFunctionInvocation() may dispatch parallel tool calls when the AI emits multiple tool
+    /// requests in a single response. Without this lock, two concurrent pick_up_item calls load
+    /// the same stale WorldState, each removes its item from an in-memory copy, and the last
+    /// save wins — leaving one item's removal silently discarded.
+    /// </summary>
+    public SemaphoreSlim WriteLock { get; } = new(1, 1);
+
     public Guid SaveSlotId => saveSlotId;
     public string GameName => gameName;
     public WorldStateService WorldStateService => worldStateService;

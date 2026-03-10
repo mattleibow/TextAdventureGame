@@ -21,6 +21,11 @@ public class PickUpItemTool(ToolContext ctx)
 
         ctx.EmitToolCall("pick_up_item", $"item={itemName}, effect={effect}");
 
+        // Acquire the per-turn write lock: parallel tool calls from the AI would otherwise race on
+        // the shared WorldState and MapTile, each loading stale state before the other saves.
+        await ctx.WriteLock.WaitAsync(cancellationToken);
+        try
+        {
         var worldState = await ctx.WorldStateService.GetCurrentState(ctx.SaveSlotId, cancellationToken);
         if (worldState is null) return "Cannot pick up — world not initialized.";
 
@@ -53,5 +58,10 @@ public class PickUpItemTool(ToolContext ctx)
 
         ctx.EmitToolResult("🎒", $"+{match} [{normalEffect}]", $"Picked up: {match}. Effect={normalEffect}. Inventory updated.");
         return $"You pick up the {match} and add it to your inventory.";
+        }
+        finally
+        {
+            ctx.WriteLock.Release();
+        }
     }
 }

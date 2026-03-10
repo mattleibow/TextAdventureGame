@@ -16,6 +16,9 @@ public class DropItemTool(ToolContext ctx)
 
         ctx.EmitToolCall("drop_item", $"item={itemName}");
 
+        await ctx.WriteLock.WaitAsync(cancellationToken);
+        try
+        {
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
@@ -46,5 +49,10 @@ public class DropItemTool(ToolContext ctx)
 
         ctx.EmitToolResult("🗑️", $"dropped: {invItem.ItemName}", $"Dropped {invItem.ItemName} at current location. It can be picked up again.");
         return $"You drop the {invItem.ItemName} on the ground.";
+        }
+        finally
+        {
+            ctx.WriteLock.Release();
+        }
     }
 }
