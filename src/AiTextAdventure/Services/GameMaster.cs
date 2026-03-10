@@ -11,11 +11,12 @@ namespace AiTextAdventure.Services;
 public record GameTurnResult(string Narrative, List<SuggestedAction> Suggestions);
 
 /// <summary>
-/// The AI Game Master. Drives every player turn via two phases:
-/// Phase 1 — tool calling: AI invokes game tools (move, look_around, pick_up_item, etc.) to execute
-///            the player's action and returns a vivid narrative.
+/// The AI Game Master. Drives every player turn via three phases:
+/// Phase 1a — tool executor: AI calls game tools (move, look_around, pick_up_item, etc.) to execute
+///             the player's action. Returns only "Done." — narrative is NOT its job.
+/// Phase 1b — narrator: A focused AI call that reads the tool results and writes vivid atmospheric prose.
+///             Because it only writes (no tools), it produces better narrative quality.
 /// Phase 2 — structured output: AI returns <see cref="SuggestedActions"/> for the suggestion buttons.
-/// No response parsing. No if/else game logic. AI decides everything.
 /// </summary>
 public class GameMaster(
     IChatClient chatClient,
@@ -29,30 +30,37 @@ public class GameMaster(
     private int _turnNumber = 0;
 
     /// <summary>
-    /// System prompt for Phase 1 (tool-calling). Guides the AI to use tools and write narrative.
-    /// Deliberately omits any format instructions — structured output handles suggestions separately.
+    /// System prompt for Phase 1a (tool executor). Only calls tools — deliberately no narrative.
     /// </summary>
-    private const string GameMasterSystemPrompt = """
-        You are the Game Master of a text adventure. You have tools to read and change the game world.
+    private const string ExecutorSystemPrompt = """
+        You are the action executor for a text adventure game. You have tools to read and change the game world.
 
         When the player gives you an action, follow these steps IN ORDER:
         1. Call get_world_state to understand the current situation.
         2. Call get_current_tile to get the scene description.
-        3. Call EXACTLY ONE action tool based on what the player wants:
+        3. Call EXACTLY the action tool(s) the player wants:
            - "pick up", "take", "grab", "collect" → call pick_up_item (NEVER call look_around instead)
            - "go", "walk", "move", "travel", any direction → call move_player
            - "look", "search", "explore", "examine" → call look_around
            - "drop", "put down", "discard" → call drop_item
            - "eat", "drink", "use", "consume" → call use_item
            - "equip", "wield", "wear" → call equip_item
-        4. Write an atmospheric 2-4 sentence narrative in second-person present tense.
-           React to what the tools returned. Focus on sights, sounds, and smells.
+        4. After all tools complete, respond with only: "Done."
 
         CRITICAL RULES:
         - Call pick_up_item when the player wants to pick something up. NEVER narrate picking up without calling pick_up_item.
         - Call move_player when the player wants to move. NEVER narrate moving without calling move_player.
         - Only pick up items that exist in the PORTABLE ITEMS list from get_world_state.
         - DO NOT call look_around when the player wants to pick something up or move.
+        - DO NOT write any story, narrative, or description — only call tools, then say "Done."
+        """;
+
+    /// <summary>System prompt for Phase 1b (narrator). Pure storytelling — no tools, no game logic.</summary>
+    private const string NarratorSystemPrompt = """
+        You are the Narrator of a text adventure game. Write vivid, atmospheric prose.
+        You will be given what just happened (tool results) and where the player is.
+        Write exactly 2-4 sentences in second-person present tense ("You...").
+        Focus on sights, sounds, smells, and feeling. Do not list items mechanically.
         """;
 
     /// <summary>System prompt for Phase 2 (structured suggestions). Minimal, focused.</summary>
@@ -119,40 +127,63 @@ public class GameMaster(
         var slot = await saveSlotService.GetSaveSlot(saveSlotId, ct);
         var gameName = slot?.Name ?? "Adventure";
 
-        // ── Phase 1: Tool calling — AI uses tools to execute action and write narrative ──
+        // ── Phase 1a: Action Executor — AI calls tools, does NOT write narrative ──
         var toolCtx = new ToolContext(saveSlotId, gameName, worldStateService, mapService, store, eventStream, logger);
         var toolRegistry = new ToolRegistry(toolCtx);
-        var phase1Options = new ChatOptions { Tools = toolRegistry.GetAllTools() };
+        var executorOptions = new ChatOptions { Tools = toolRegistry.GetAllTools() };
 
-        var phase1Messages = new List<ChatMessage>
+        var executorMessages = new List<ChatMessage>
         {
-            new(ChatRole.System, GameMasterSystemPrompt),
+            new(ChatRole.System, ExecutorSystemPrompt),
             new(ChatRole.User, playerInput)
         };
 
+        try
+        {
+            eventStream.Emit(new AgentEvent("🔧 Executor", "Executor", AgentEventKind.Prompt,
+                playerInput[..Math.Min(60, playerInput.Length)],
+                $"[System]\n{ExecutorSystemPrompt}\n\n[User]\n{playerInput}"));
+
+            // UseFunctionInvocation() middleware manages the tool-calling loop.
+            await chatClient.GetResponseAsync(executorMessages, executorOptions, ct);
+
+            eventStream.Emit(new AgentEvent("✅ Actions complete", "Executor", AgentEventKind.Response,
+                $"{toolCtx.ActionLog.Count} action(s) performed",
+                string.Join("\n", toolCtx.ActionLog)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "GameMaster Phase 1a (executor) failed");
+            eventStream.Emit(new AgentEvent("Executor failed", "Executor", AgentEventKind.Error, ex.Message));
+        }
+
+        // ── Phase 1b: Narrator — writes vivid prose from tool results ──
         string narrative;
         try
         {
-            eventStream.Emit(new AgentEvent("📋 GM prompt", "GameMaster", AgentEventKind.Prompt,
-                playerInput[..Math.Min(60, playerInput.Length)],
-                $"[System]\n{GameMasterSystemPrompt}\n\n[User]\n{playerInput}"));
+            var worldState = await worldStateService.GetCurrentState(saveSlotId, ct);
+            var narratorContext = BuildNarratorContext(playerInput, toolCtx.ActionLog, worldState);
 
-            // UseFunctionInvocation() middleware manages the tool-calling loop.
-            // AI calls tools, gets results, reasons, calls more tools, then writes narrative.
-            var phase1Response = await chatClient.GetResponseAsync(phase1Messages, phase1Options, ct);
-            narrative = phase1Response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            eventStream.Emit(new AgentEvent("📖 Narrator", "Narrator", AgentEventKind.Prompt,
+                narratorContext[..Math.Min(60, narratorContext.Length)],
+                $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{narratorContext}"));
 
+            var narratorResponse = await chatClient.GetResponseAsync(
+                [new(ChatRole.System, NarratorSystemPrompt), new(ChatRole.User, narratorContext)],
+                cancellationToken: ct);
+
+            narrative = narratorResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(narrative))
                 narrative = "The world shifts imperceptibly around you.";
 
-            eventStream.Emit(new AgentEvent("💬 GM narrative", "GameMaster", AgentEventKind.Response,
+            eventStream.Emit(new AgentEvent("💬 Narrative", "Narrator", AgentEventKind.Response,
                 narrative[..Math.Min(80, narrative.Length)], narrative));
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "GameMaster phase 1 (tool calling) failed");
+            logger.LogError(ex, "GameMaster Phase 1b (narrator) failed");
             narrative = $"The world pauses. ({ex.Message})";
-            eventStream.Emit(new AgentEvent("Phase 1 failed", "GameMaster", AgentEventKind.Error, ex.Message));
+            eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, ex.Message));
         }
 
         // ── Phase 2: Structured suggestions — GetResponseAsync<SuggestedActions> ──
@@ -192,6 +223,24 @@ public class GameMaster(
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>Builds a compact context string for the Narrator (Phase 1b).</summary>
+    private static string BuildNarratorContext(string playerInput, List<string> actionLog, WorldState? worldState)
+    {
+        var parts = new List<string> { $"Player action: {playerInput}" };
+        if (actionLog.Count > 0)
+            parts.Add($"What happened:\n{string.Join("\n", actionLog)}");
+        else
+            parts.Add("What happened: No specific action was performed.");
+        if (worldState is not null)
+        {
+            parts.Add($"Current location: {worldState.CurrentLocation} ({worldState.CurrentBiome})");
+            if (worldState.KnownEntities is { Count: > 0 } items)
+                parts.Add($"Visible items nearby: {string.Join(", ", items.Take(3))}");
+        }
+        parts.Add("Write 2-4 sentences of vivid narrative:");
+        return string.Join("\n", parts);
+    }
 
     /// <summary>Builds a compact context string for the suggestion AI call.</summary>
     private static string BuildSuggestionContext(WorldState? worldState, string narrative)

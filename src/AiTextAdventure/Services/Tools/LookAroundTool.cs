@@ -23,7 +23,7 @@ public class LookAroundTool(ToolContext ctx)
                 ? $"You look around. Visible portable items: {string.Join(", ", discovered)}."
                 : "You search thoroughly but find nothing new here.";
 
-        ctx.EmitToolResult("🔍", $"look_around: {discovered.Count} item(s) visible", resultMsg);
+        ctx.EmitToolResult("🔍", $"look_around: {discovered.Count} item(s) visible", resultMsg, isAction: true);
         return resultMsg;
     }
 }

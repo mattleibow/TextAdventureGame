@@ -28,6 +28,13 @@ public class ToolContext(
     /// </summary>
     public SemaphoreSlim WriteLock { get; } = new(1, 1);
 
+    /// <summary>
+    /// Accumulates all action tool results during Phase 1a (tool execution).
+    /// GameMaster reads this in Phase 1b to give the Narrator precise context about what happened.
+    /// Only action tools append here (not get_world_state / get_current_tile).
+    /// </summary>
+    public List<string> ActionLog { get; } = [];
+
     public Guid SaveSlotId => saveSlotId;
     public string GameName => gameName;
     public WorldStateService WorldStateService => worldStateService;
@@ -40,10 +47,14 @@ public class ToolContext(
     public void EmitToolCall(string toolName, string? args = null) =>
         eventStream.Emit(new AgentEvent($"🔧 {toolName}", "Tool", AgentEventKind.ToolCall, args, args));
 
-    /// <summary>Emits a tool result event with full expandable content.</summary>
-    public void EmitToolResult(string icon, string summary, string? fullResult = null) =>
+    /// <summary>Emits a tool result event with full expandable content. Action results are also appended to ActionLog.</summary>
+    public void EmitToolResult(string icon, string summary, string? fullResult = null, bool isAction = false)
+    {
         eventStream.Emit(new AgentEvent($"{icon} {summary}", "Tool", AgentEventKind.ToolResult,
             summary[..Math.Min(80, summary.Length)], fullResult ?? summary));
+        if (isAction && !string.IsNullOrWhiteSpace(fullResult))
+            ActionLog.Add(fullResult);
+    }
 
     /// <summary>Applies a game effect string (heal:N, food:N, weapon:N, armor:N, poison:N) to player stats.</summary>
     public static void ApplyEffect(PlayerStats stats, string effect)
