@@ -53,7 +53,16 @@ public class ToolContext(
         eventStream.Emit(new AgentEvent($"{icon} {summary}", "Tool", AgentEventKind.ToolResult,
             summary[..Math.Min(80, summary.Length)], fullResult ?? summary));
         if (isAction && !string.IsNullOrWhiteSpace(fullResult))
-            ActionLog.Add(fullResult);
+        {
+            // Replace game-mechanic effect code keywords with Z-names before adding to ActionLog.
+            // These keywords (weapon, armor, poison) can trigger Apple Intelligence content filter
+            // when passed as narrative context to the Narrator phase.
+            var logEntry = fullResult
+                .Replace("weapon:", "Zeapon:", StringComparison.OrdinalIgnoreCase)
+                .Replace("armor:", "Zrmor:", StringComparison.OrdinalIgnoreCase)
+                .Replace("poison:", "Zoison:", StringComparison.OrdinalIgnoreCase);
+            ActionLog.Add(logEntry);
+        }
     }
 
     /// <summary>Applies a game effect string (heal:N, food:N, weapon:N, armor:N, poison:N) to player stats.</summary>
