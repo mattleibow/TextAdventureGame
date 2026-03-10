@@ -5,18 +5,28 @@ using AiTextAdventure.Models;
 using AiTextAdventure.Models.Documents;
 using AiTextAdventure.Services.Observability;
 using AiTextAdventure.Services.Tools;
+using Microsoft.Agents.AI.Workflows;
 
 namespace AiTextAdventure.Services;
 
 public record GameTurnResult(string Narrative, List<SuggestedAction> Suggestions);
 
+/// <summary>Structured data passed from the Action Executor to the Narrator inside the workflow.</summary>
+internal record GameActionContext(string PlayerInput, IReadOnlyList<string> ActionLog, string? Location, string? Biome);
+
 /// <summary>
-/// The AI Game Master. Drives every player turn via three phases:
-/// Phase 1a — tool executor: AI calls game tools (move, look_around, pick_up_item, etc.) to execute
-///             the player's action. Returns only "Done." — narrative is NOT its job.
-/// Phase 1b — narrator: A focused AI call that reads the tool results and writes vivid atmospheric prose.
-///             Because it only writes (no tools), it produces better narrative quality.
-/// Phase 2 — structured output: AI returns <see cref="SuggestedActions"/> for the suggestion buttons.
+/// The AI Game Master. Drives every player turn using a 3-phase Agent Framework workflow:
+/// 
+/// Workflow: ActionExecutor → NarratorExecutor → SuggestionExecutor
+/// 
+/// Phase 1a (ActionExecutor): AI calls game tools (move, look_around, pick_up_item, etc.) to execute
+///     the player's action. Does NOT write narrative — outputs only a GameActionContext summary.
+/// Phase 1b (NarratorExecutor): Receives the GameActionContext and writes vivid atmospheric prose.
+///     Yields the narrative string to the workflow caller.
+/// Phase 2 (SuggestionExecutor): Receives the narrative and generates structured action suggestions.
+///     Yields the List{SuggestedAction} to the workflow caller.
+/// 
+/// Results are collected from WorkflowOutputEvent instances while watching the streaming run.
 /// </summary>
 public class GameMaster(
     IChatClient chatClient,
@@ -29,9 +39,7 @@ public class GameMaster(
 {
     private int _turnNumber = 0;
 
-    /// <summary>
-    /// System prompt for Phase 1a (tool executor). Only calls tools — deliberately no narrative.
-    /// </summary>
+    /// <summary>System prompt for Phase 1a (tool executor). Only calls tools — no narrative.</summary>
     private const string ExecutorSystemPrompt = """
         You are the action executor for a text adventure game. You have tools to read and change the game world.
 
@@ -127,117 +135,188 @@ public class GameMaster(
         var slot = await saveSlotService.GetSaveSlot(saveSlotId, ct);
         var gameName = slot?.Name ?? "Adventure";
 
-        // ── Phase 1a: Action Executor — AI calls tools, does NOT write narrative ──
+        // Build the per-turn ToolContext (WriteLock, ActionLog, DB access) and tool registry
         var toolCtx = new ToolContext(saveSlotId, gameName, worldStateService, mapService, store, eventStream, logger);
         var toolRegistry = new ToolRegistry(toolCtx);
-        var executorOptions = new ChatOptions { Tools = toolRegistry.GetAllTools() };
 
-        var executorMessages = new List<ChatMessage>
-        {
-            new(ChatRole.System, ExecutorSystemPrompt),
-            new(ChatRole.User, playerInput)
-        };
+        // Build the 3-phase workflow (action → narrator → suggestions)
+        var workflow = BuildGameWorkflow(toolCtx, toolRegistry);
+
+        string narrative = "The world shifts imperceptibly around you.";
+        List<SuggestedAction> suggestions = DefaultSuggestions();
 
         try
         {
-            eventStream.Emit(new AgentEvent("🔧 Executor", "Executor", AgentEventKind.Prompt,
-                playerInput[..Math.Min(60, playerInput.Length)],
-                $"[System]\n{ExecutorSystemPrompt}\n\n[User]\n{playerInput}"));
-
-            // UseFunctionInvocation() middleware manages the tool-calling loop.
-            await chatClient.GetResponseAsync(executorMessages, executorOptions, ct);
-
-            eventStream.Emit(new AgentEvent("✅ Actions complete", "Executor", AgentEventKind.Response,
-                $"{toolCtx.ActionLog.Count} action(s) performed",
-                string.Join("\n", toolCtx.ActionLog)));
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "GameMaster Phase 1a (executor) failed");
-            eventStream.Emit(new AgentEvent("Executor failed", "Executor", AgentEventKind.Error, ex.Message));
-        }
-
-        // ── Phase 1b: Narrator — writes vivid prose from tool results ──
-        string narrative;
-        try
-        {
-            var worldState = await worldStateService.GetCurrentState(saveSlotId, ct);
-            var narratorContext = BuildNarratorContext(playerInput, toolCtx.ActionLog, worldState);
-
-            eventStream.Emit(new AgentEvent("📖 Narrator", "Narrator", AgentEventKind.Prompt,
-                narratorContext[..Math.Min(60, narratorContext.Length)],
-                $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{narratorContext}"));
-
-            var narratorResponse = await chatClient.GetResponseAsync(
-                [new(ChatRole.System, NarratorSystemPrompt), new(ChatRole.User, narratorContext)],
+            // Start the streaming workflow run — the initial ChatMessage is the player's input
+            await using var run = await InProcessExecution.RunStreamingAsync<ChatMessage>(
+                workflow,
+                new ChatMessage(ChatRole.User, playerInput),
+                sessionId: $"{saveSlotId}:turn{turnNum}",
                 cancellationToken: ct);
 
-            narrative = narratorResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(narrative))
-                narrative = "The world shifts imperceptibly around you.";
+            // Watch for WorkflowOutputEvent — both Narrator and Suggestion executors yield outputs
+            await foreach (var evt in run.WatchStreamAsync(ct))
+            {
+                switch (evt)
+                {
+                    case WorkflowOutputEvent { Data: string narrativeText } when !string.IsNullOrWhiteSpace(narrativeText):
+                        narrative = narrativeText;
+                        eventStream.Emit(new AgentEvent("💬 Narrative", "Narrator", AgentEventKind.Response,
+                            narrativeText[..Math.Min(80, narrativeText.Length)], narrativeText));
+                        break;
 
-            eventStream.Emit(new AgentEvent("💬 Narrative", "Narrator", AgentEventKind.Response,
-                narrative[..Math.Min(80, narrative.Length)], narrative));
+                    case WorkflowOutputEvent { Data: List<SuggestedAction> acts } when acts.Count > 0:
+                        suggestions = acts;
+                        eventStream.Emit(new AgentEvent("💬 Suggestions", "Suggestion", AgentEventKind.Response,
+                            $"{acts.Count} actions", string.Join(", ", acts.Select(a => a.Label))));
+                        break;
+
+                    case ExecutorInvokedEvent invoked:
+                        eventStream.Emit(new AgentEvent($"⚙️ {invoked.ExecutorId}", "Workflow", AgentEventKind.AgentInvoked));
+                        break;
+
+                    case ExecutorCompletedEvent completed:
+                        eventStream.Emit(new AgentEvent($"✅ {completed.ExecutorId}", "Workflow", AgentEventKind.AgentOutput));
+                        break;
+
+                    case ExecutorFailedEvent failed:
+                        logger.LogError(failed.Data, "Workflow executor {Id} failed", failed.ExecutorId);
+                        eventStream.Emit(new AgentEvent($"❌ {failed.ExecutorId}", "Workflow", AgentEventKind.Error,
+                            failed.Data?.Message));
+                        break;
+                }
+            }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "GameMaster Phase 1b (narrator) failed");
+            logger.LogError(ex, "GameMaster workflow failed on turn {Turn}", turnNum);
             narrative = $"The world pauses. ({ex.Message})";
-            eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, ex.Message));
+            eventStream.Emit(new AgentEvent("Workflow failed", "GameMaster", AgentEventKind.Error, ex.Message));
         }
 
-        // ── Phase 2: Structured suggestions — GetResponseAsync<SuggestedActions> ──
-        List<SuggestedAction> suggestions;
-        try
-        {
-            var worldState = await worldStateService.GetCurrentState(saveSlotId, ct);
-            var suggCtx = BuildSuggestionContext(worldState, narrative);
-
-            eventStream.Emit(new AgentEvent("📋 Suggestion prompt", "Suggestion", AgentEventKind.Prompt,
-                suggCtx[..Math.Min(60, suggCtx.Length)],
-                $"[System]\n{SuggestionSystemPrompt}\n\n[User]\n{suggCtx}"));
-
-            var suggResponse = await chatClient.GetResponseAsync<SuggestedActions>(
-                [new(ChatRole.System, SuggestionSystemPrompt), new(ChatRole.User, suggCtx)],
-                cancellationToken: ct);
-
-            var rawSugg = suggResponse.Messages.LastOrDefault()?.Text?.Trim() ?? "";
-            suggestions = suggResponse.Result?.Actions is { Count: > 0 } acts ? acts : DefaultSuggestions();
-
-            eventStream.Emit(new AgentEvent("💬 Suggestions", "Suggestion", AgentEventKind.Response,
-                $"{suggestions.Count} actions", rawSugg));
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "GameMaster phase 2 (suggestions) failed — using defaults");
-            suggestions = DefaultSuggestions();
-        }
-
-        // ── Stat decay: automatic per-turn game mechanic ──
+        // Post-turn: stat decay, journal persistence, save slot update
         await ApplyStatDecayAsync(saveSlotId, ct);
-
         await PersistJournalEntry(saveSlotId, narrative, ct);
         await UpdateLastPlayed(saveSlotId, ct);
         eventStream.Emit(new AgentEvent("Turn complete", "GameMaster", AgentEventKind.WorkflowComplete));
         return new GameTurnResult(narrative, suggestions);
     }
 
+    // ── Workflow builder ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the 3-phase sequential workflow for a single game turn:
+    /// ActionExecutor → NarratorExecutor → SuggestionExecutor
+    /// </summary>
+    private Workflow BuildGameWorkflow(ToolContext toolCtx, ToolRegistry toolRegistry)
+    {
+        // ── Phase 1a: Action Executor ────────────────────────────────────────
+        // Accepts the player's ChatMessage, runs tool-calling AI, returns GameActionContext
+        Func<ChatMessage, IWorkflowContext, CancellationToken, ValueTask<GameActionContext>> actionFunc =
+            async (msg, wfCtx, ct) =>
+            {
+                var playerInput = msg.Text ?? "";
+                var options = new ChatOptions { Tools = toolRegistry.GetAllTools() };
+                var messages = new List<ChatMessage>
+                {
+                    new(ChatRole.System, ExecutorSystemPrompt),
+                    new(ChatRole.User, playerInput)
+                };
+
+                toolCtx.EventStream.Emit(new AgentEvent("🔧 Executor", "Executor", AgentEventKind.Prompt,
+                    playerInput[..Math.Min(60, playerInput.Length)],
+                    $"[System]\n{ExecutorSystemPrompt}\n\n[User]\n{playerInput}"));
+
+                await chatClient.GetResponseAsync(messages, options, ct);
+
+                var worldState = await toolCtx.WorldStateService.GetCurrentState(toolCtx.SaveSlotId, ct);
+                var context = new GameActionContext(
+                    playerInput, toolCtx.ActionLog,
+                    worldState?.CurrentLocation, worldState?.CurrentBiome);
+
+                toolCtx.EventStream.Emit(new AgentEvent("✅ Actions complete", "Executor", AgentEventKind.Response,
+                    $"{toolCtx.ActionLog.Count} action(s) performed",
+                    string.Join("\n", toolCtx.ActionLog)));
+
+                return context;
+            };
+        var actionBinding = actionFunc.BindAsExecutor("ActionExecutor", ExecutorOptions.Default, threadsafe: true);
+
+        // ── Phase 1b: Narrator Executor ──────────────────────────────────────
+        // Accepts GameActionContext, writes vivid narrative, yields it AND forwards to Suggestion
+        Func<GameActionContext, IWorkflowContext, CancellationToken, ValueTask<ChatMessage>> narratorFunc =
+            async (context, wfCtx, ct) =>
+            {
+                var narratorContext = BuildNarratorContext(context);
+
+                toolCtx.EventStream.Emit(new AgentEvent("📖 Narrator", "Narrator", AgentEventKind.Prompt,
+                    narratorContext[..Math.Min(60, narratorContext.Length)],
+                    $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{narratorContext}"));
+
+                var response = await chatClient.GetResponseAsync(
+                    [new(ChatRole.System, NarratorSystemPrompt), new(ChatRole.User, narratorContext)],
+                    cancellationToken: ct);
+
+                var narrative = response.Messages.LastOrDefault()?.Text?.Trim()
+                    ?? "The world shifts imperceptibly around you.";
+
+                // Yield narrative to the workflow caller (collected via WorkflowOutputEvent)
+                await wfCtx.YieldOutputAsync(narrative, ct);
+
+                // Forward narrative as ChatMessage to the Suggestion executor
+                return new ChatMessage(ChatRole.Assistant, narrative);
+            };
+        var narratorBinding = narratorFunc.BindAsExecutor("NarratorExecutor", ExecutorOptions.Default, threadsafe: true);
+
+        // ── Phase 2: Suggestion Executor ─────────────────────────────────────
+        // Accepts the narrative ChatMessage, generates suggestions, yields them to workflow caller
+        Func<ChatMessage, IWorkflowContext, CancellationToken, ValueTask> suggestionFunc =
+            async (narrativeMsg, wfCtx, ct) =>
+            {
+                var worldState = await toolCtx.WorldStateService.GetCurrentState(toolCtx.SaveSlotId, ct);
+                var suggCtx = BuildSuggestionContext(worldState, narrativeMsg.Text ?? "");
+
+                toolCtx.EventStream.Emit(new AgentEvent("📋 Suggestion prompt", "Suggestion", AgentEventKind.Prompt,
+                    suggCtx[..Math.Min(60, suggCtx.Length)],
+                    $"[System]\n{SuggestionSystemPrompt}\n\n[User]\n{suggCtx}"));
+
+                try
+                {
+                    var suggResponse = await chatClient.GetResponseAsync<SuggestedActions>(
+                        [new(ChatRole.System, SuggestionSystemPrompt), new(ChatRole.User, suggCtx)],
+                        cancellationToken: ct);
+
+                    var acts = suggResponse.Result?.Actions is { Count: > 0 } a ? a : DefaultSuggestions();
+                    // Yield List<SuggestedAction> to the workflow caller (collected via WorkflowOutputEvent)
+                    await wfCtx.YieldOutputAsync(acts, ct);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Suggestion phase failed — using defaults");
+                    await wfCtx.YieldOutputAsync(DefaultSuggestions(), ct);
+                }
+            };
+        var suggestionBinding = suggestionFunc.BindAsExecutor("SuggestionExecutor", ExecutorOptions.Default, threadsafe: true);
+
+        // Wire the sequential workflow: Action → Narrator → Suggestion
+        return new WorkflowBuilder(actionBinding)
+            .AddEdge(actionBinding, narratorBinding)
+            .AddEdge(narratorBinding, suggestionBinding)
+            .Build(false);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    /// <summary>Builds a compact context string for the Narrator (Phase 1b).</summary>
-    private static string BuildNarratorContext(string playerInput, List<string> actionLog, WorldState? worldState)
+    /// <summary>Builds the narrator context string from action results.</summary>
+    private static string BuildNarratorContext(GameActionContext context)
     {
-        var parts = new List<string> { $"Player action: {playerInput}" };
-        if (actionLog.Count > 0)
-            parts.Add($"What happened:\n{string.Join("\n", actionLog)}");
+        var parts = new List<string> { $"Player action: {context.PlayerInput}" };
+        if (context.ActionLog.Count > 0)
+            parts.Add($"What happened:\n{string.Join("\n", context.ActionLog)}");
         else
             parts.Add("What happened: No specific action was performed.");
-        if (worldState is not null)
-        {
-            parts.Add($"Current location: {worldState.CurrentLocation} ({worldState.CurrentBiome})");
-            if (worldState.KnownEntities is { Count: > 0 } items)
-                parts.Add($"Visible items nearby: {string.Join(", ", items.Take(3))}");
-        }
+        if (context.Location is not null)
+            parts.Add($"Current location: {context.Location} ({context.Biome})");
         parts.Add("Write 2-4 sentences of vivid narrative:");
         return string.Join("\n", parts);
     }
