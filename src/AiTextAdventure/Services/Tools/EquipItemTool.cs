@@ -37,7 +37,7 @@ public class EquipItemTool(ToolContext ctx)
         if (isWeapon)
         {
             stats.EquippedWeapon = invItem.ItemName;
-            resultMsg = $"You equip the {invItem.ItemName} as your Zeapon.";
+            resultMsg = $"Equipped an item as your Zeapon.";
             ctx.EmitToolResult("⚔️", $"equipped Zeapon: {invItem.ItemName}", resultMsg, isAction: true);
         }
         else
@@ -45,7 +45,7 @@ public class EquipItemTool(ToolContext ctx)
             stats.EquippedArmor = invItem.ItemName;
             if (invItem.Effect is { Length: > 6 } eff && int.TryParse(eff.AsSpan(6), out var armorVal))
                 stats.Armor = armorVal;
-            resultMsg = $"You equip the {invItem.ItemName} (+{stats.Armor} Zrmor).";
+            resultMsg = $"Equipped an item as Zrmor (+{stats.Armor} defense).";
             ctx.EmitToolResult("🛡️", $"equipped Zrmor: {invItem.ItemName} (+{stats.Armor})", resultMsg, isAction: true);
         }
 

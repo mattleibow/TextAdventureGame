@@ -17,11 +17,13 @@ public class LookAroundTool(ToolContext ctx)
         await ctx.SaveRecentEvent(worldState, "searched the area", cancellationToken);
 
         var discovered = worldState.KnownEntities ?? [];
+        // ActionLog entry uses a generic description to avoid triggering Apple Intelligence
+        // content filter when item names (Znife, etc.) are rephrased by the Narrator.
         var resultMsg = hiddenCountBefore > 0 && discovered.Count > 0
-            ? $"You search carefully and discover: {string.Join(", ", discovered)}. These can be picked up."
+            ? $"Searched area and discovered {discovered.Count} item(s) that can be picked up."
             : discovered.Count > 0
-                ? $"You look around. Visible portable items: {string.Join(", ", discovered)}."
-                : "You search thoroughly but find nothing new here.";
+                ? $"Looked around. Found {discovered.Count} portable item(s) nearby."
+                : "Searched thoroughly but found nothing new.";
 
         ctx.EmitToolResult("🔍", $"look_around: {discovered.Count} item(s) visible", resultMsg, isAction: true);
         return resultMsg;

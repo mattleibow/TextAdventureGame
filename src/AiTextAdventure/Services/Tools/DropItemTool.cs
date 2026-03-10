@@ -47,7 +47,7 @@ public class DropItemTool(ToolContext ctx)
             await ctx.SaveRecentEvent(worldState, $"dropped {invItem.ItemName}", cancellationToken);
         }
 
-        ctx.EmitToolResult("🗑️", $"dropped: {invItem.ItemName}", $"Dropped {invItem.ItemName} at current location. It can be picked up again.", isAction: true);
+        ctx.EmitToolResult("🗑️", $"dropped: {invItem.ItemName}", $"Dropped an item at current location. It can be picked up again.", isAction: true);
         return $"You drop the {invItem.ItemName} on the ground.";
         }
         finally

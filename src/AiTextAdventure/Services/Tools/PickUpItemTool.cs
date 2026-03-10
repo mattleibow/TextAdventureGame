@@ -56,7 +56,7 @@ public class PickUpItemTool(ToolContext ctx)
         await ctx.RemoveFromTile(worldState, match, cancellationToken);
         await ctx.SaveRecentEvent(worldState, $"picked up {match}", cancellationToken);
 
-        ctx.EmitToolResult("🎒", $"+{match} [{normalEffect}]", $"Picked up: {match}. Effect={normalEffect}. Inventory updated.", isAction: true);
+        ctx.EmitToolResult("🎒", $"+{match} [{normalEffect}]", $"Picked up an item and added it to inventory.", isAction: true);
         return $"You pick up the {match} and add it to your inventory.";
         }
         finally

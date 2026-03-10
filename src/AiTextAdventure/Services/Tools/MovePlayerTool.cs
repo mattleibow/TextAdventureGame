@@ -30,7 +30,7 @@ public class MovePlayerTool(ToolContext ctx)
 
             var tileContext = ctx.MapService.BuildTileContext(newTile, newTile.IsRevealed);
             ctx.EmitToolResult("🗺️", $"Moved {direction} → {newTile.LocationName} ({newTile.Biome})",
-                $"You move {direction}.\n{tileContext}", isAction: true);
+                $"Moved {direction} to {newTile.LocationName} ({newTile.Biome}).", isAction: true);
 
             return $"You move {direction}.\n{tileContext}";
         }

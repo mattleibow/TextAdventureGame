@@ -38,7 +38,7 @@ public class UseItemTool(ToolContext ctx)
         if (worldState is not null)
             await ctx.SaveRecentEvent(worldState, $"used {invItem.ItemName}", cancellationToken);
 
-        ctx.EmitToolResult("✨", $"used: {invItem.ItemName}", $"Used {invItem.ItemName}. HP:{beforeHp}→{stats.Health} Hunger:{beforeHunger}→{stats.Hunger}", isAction: true);
+        ctx.EmitToolResult("✨", $"used: {invItem.ItemName}", $"Used a consumable item. HP:{beforeHp}→{stats.Health} Hunger:{beforeHunger}→{stats.Hunger}", isAction: true);
         return $"You use the {invItem.ItemName}. HP: {beforeHp}→{stats.Health}. Hunger: {beforeHunger}→{stats.Hunger}.";
         }
         finally

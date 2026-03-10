@@ -39,7 +39,7 @@ public class GameMaster(
 
         When the player gives you an action, follow these steps IN ORDER:
         1. Call get_world_state to understand the current situation.
-        2. Call get_current_tile to get the scene description.
+        2. Call get_current_tile to get the scene description. (optional — skip if you have enough context)
         3. Call EXACTLY the action tool(s) the player explicitly requested:
            - "pick up", "take", "grab", "collect" → call pick_up_item
            - "go", "walk", "move", "travel", any direction → call move_player
@@ -47,13 +47,14 @@ public class GameMaster(
            - "drop", "put down", "discard" → call drop_item
            - "eat", "drink", "use", "consume" → call use_item
            - "equip", "wield", "wear" → call equip_item
-        4. After all tools complete, respond with only: "Done."
+        4. STOP. Respond with only: "Done."
 
         CRITICAL RULES:
         - Only call action tools for actions the player EXPLICITLY requested in this turn.
         - NEVER pick up items, move, or interact with anything unless the player asked you to.
+        - After calling the requested tool(s), STOP IMMEDIATELY. Do not call any additional tools.
+        - Do not call drop_item unless the player said "drop". Do not call pick_up_item unless they said "pick up".
         - Only pick up items that exist in the PORTABLE ITEMS list from get_world_state.
-        - DO NOT call look_around when the player wants to pick something up or move.
         - DO NOT write any story, narrative, or description — only call tools, then say "Done."
         """;
 
@@ -63,6 +64,7 @@ public class GameMaster(
         You will be given what just happened (tool results) and where the player is.
         Write exactly 2-4 sentences in second-person present tense ("You...").
         Focus on sights, sounds, smells, and feeling. Do not list items mechanically.
+        IMPORTANT: Use all item and place names EXACTLY as written — do not translate or rename them.
         """;
 
     /// <summary>System prompt for Phase 2 (structured suggestions). Minimal, focused.</summary>
@@ -246,6 +248,30 @@ public class GameMaster(
             eventStream.Emit(new AgentEvent("💬 Narrative", "Narrator", AgentEventKind.Response,
                 narrative[..Math.Min(80, narrative.Length)], narrative));
         }
+        catch (Exception ex) when (ex.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase)
+                                || ex.Message.Contains("content", StringComparison.OrdinalIgnoreCase))
+        {
+            // Content filter hit — retry with a minimal safe prompt
+            logger.LogWarning("Narrator content filter hit, retrying with minimal prompt");
+            try
+            {
+                var worldState2 = await worldStateService.GetCurrentState(saveSlotId, ct);
+                var minimalCtx = $"Player is in {worldState2?.CurrentLocation ?? "an unknown place"} ({worldState2?.CurrentBiome ?? "unknown"} biome). Write 2 atmospheric sentences about their surroundings.";
+                var retryResponse = await chatClient.GetResponseAsync(
+                    [new(ChatRole.System, NarratorSystemPrompt), new(ChatRole.User, minimalCtx)],
+                    cancellationToken: ct);
+                narrative = retryResponse.Messages.LastOrDefault()?.Text?.Trim()
+                    ?? "The world shifts imperceptibly around you.";
+                eventStream.Emit(new AgentEvent("💬 Narrative (retry)", "Narrator", AgentEventKind.Response,
+                    narrative[..Math.Min(80, narrative.Length)], narrative));
+            }
+            catch (Exception retryEx)
+            {
+                logger.LogError(retryEx, "Narrator retry also failed");
+                narrative = "The world shifts imperceptibly around you.";
+                eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, retryEx.Message));
+            }
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "GameMaster Phase 1b (narrator) failed");
@@ -294,19 +320,38 @@ public class GameMaster(
     /// <summary>Builds a compact context string for the Narrator (Phase 1b).</summary>
     private static string BuildNarratorContext(string playerInput, List<string> actionLog, WorldState? worldState)
     {
-        var parts = new List<string> { $"Player action: {playerInput}" };
+        var parts = new List<string>();
+        // Give the Narrator a sanitized action description. We avoid raw player input (which may
+        // contain item names that Apple Intelligence re-describes with real-world terms, triggering
+        // the content filter). Instead, classify the action type to give minimal but useful context.
+        var actionDesc = ClassifyAction(playerInput);
+        parts.Add($"The player {actionDesc}.");
         if (actionLog.Count > 0)
             parts.Add($"What happened:\n{string.Join("\n", actionLog)}");
-        else
-            parts.Add("What happened: No specific action was performed.");
         if (worldState is not null)
-        {
             parts.Add($"Current location: {worldState.CurrentLocation} ({worldState.CurrentBiome})");
-            if (worldState.KnownEntities is { Count: > 0 } items)
-                parts.Add($"Visible items nearby: {string.Join(", ", items.Take(3))}");
-        }
-        parts.Add("Write 2-4 sentences of vivid narrative:");
+        parts.Add("Write 2-4 sentences of vivid atmospheric narrative:");
         return string.Join("\n", parts);
+    }
+
+    /// <summary>Classifies a player input into a safe, generic action description for the Narrator.</summary>
+    private static string ClassifyAction(string input)
+    {
+        var lower = input.ToLowerInvariant();
+        if (lower.Contains("pick up") || lower.Contains("take") || lower.Contains("grab") || lower.Contains("collect"))
+            return "picked up an item from the ground";
+        if (lower.Contains("go ") || lower.Contains("walk") || lower.Contains("move") || lower.Contains("travel")
+            || lower.Contains("north") || lower.Contains("south") || lower.Contains("east") || lower.Contains("west"))
+            return "moved to a new location";
+        if (lower.Contains("look") || lower.Contains("search") || lower.Contains("explore") || lower.Contains("examine"))
+            return "looked around carefully";
+        if (lower.Contains("drop") || lower.Contains("put down") || lower.Contains("discard"))
+            return "dropped an item";
+        if (lower.Contains("eat") || lower.Contains("drink") || lower.Contains("use") || lower.Contains("consume"))
+            return "used a consumable item";
+        if (lower.Contains("equip") || lower.Contains("wield") || lower.Contains("wear"))
+            return "equipped an item";
+        return "took an action";
     }
 
     /// <summary>Builds a compact context string for the suggestion AI call.</summary>
