@@ -35,11 +35,13 @@ public class GameMaster(
     private const string ExecutorSystemPrompt = """
         You are the action executor for a text adventure game. You have tools to read and change the game world.
 
+        You ONLY run when a player has EXPLICITLY requested an action. Never call action tools speculatively.
+
         When the player gives you an action, follow these steps IN ORDER:
         1. Call get_world_state to understand the current situation.
         2. Call get_current_tile to get the scene description.
-        3. Call EXACTLY the action tool(s) the player wants:
-           - "pick up", "take", "grab", "collect" → call pick_up_item (NEVER call look_around instead)
+        3. Call EXACTLY the action tool(s) the player explicitly requested:
+           - "pick up", "take", "grab", "collect" → call pick_up_item
            - "go", "walk", "move", "travel", any direction → call move_player
            - "look", "search", "explore", "examine" → call look_around
            - "drop", "put down", "discard" → call drop_item
@@ -48,8 +50,8 @@ public class GameMaster(
         4. After all tools complete, respond with only: "Done."
 
         CRITICAL RULES:
-        - Call pick_up_item when the player wants to pick something up. NEVER narrate picking up without calling pick_up_item.
-        - Call move_player when the player wants to move. NEVER narrate moving without calling move_player.
+        - Only call action tools for actions the player EXPLICITLY requested in this turn.
+        - NEVER pick up items, move, or interact with anything unless the player asked you to.
         - Only pick up items that exist in the PORTABLE ITEMS list from get_world_state.
         - DO NOT call look_around when the player wants to pick something up or move.
         - DO NOT write any story, narrative, or description — only call tools, then say "Done."
@@ -111,7 +113,72 @@ public class GameMaster(
             _ = mapService.GenerateSurroundingTiles(saveSlotId, worldState.PlayerX, worldState.PlayerY, gameName, ct);
         }
 
-        return await ProcessTurnAsync(saveSlotId, "Describe the opening scene. Focus on atmosphere, sights, and sounds.", ct);
+        return await DescribeOpeningSceneAsync(saveSlotId, ct);
+    }
+
+    /// <summary>
+    /// Generates the opening scene narrative WITHOUT running the Executor.
+    /// Skipping the Executor prevents the AI from calling action tools (pick_up_item, etc.)
+    /// in response to a "describe the scene" prompt — which caused auto-collection of all items.
+    /// </summary>
+    private async Task<GameTurnResult> DescribeOpeningSceneAsync(Guid saveSlotId, CancellationToken ct)
+    {
+        eventStream.Emit(new AgentEvent("Turn 0", "GameMaster", AgentEventKind.TurnStart, "Opening scene"));
+        eventStream.Emit(new AgentEvent("▶ Opening scene (no tools)", "GameMaster", AgentEventKind.AgentInvoked));
+
+        var worldState = await worldStateService.GetCurrentState(saveSlotId, ct);
+
+        string narrative;
+        try
+        {
+            var narratorContext = BuildNarratorContext(
+                "Describe the opening scene vividly.",
+                [],   // No tool actions — this is a pure scene description
+                worldState);
+
+            eventStream.Emit(new AgentEvent("📖 Narrator", "Narrator", AgentEventKind.Prompt,
+                narratorContext[..Math.Min(60, narratorContext.Length)],
+                $"[System]\n{NarratorSystemPrompt}\n\n[User]\n{narratorContext}"));
+
+            var response = await chatClient.GetResponseAsync(
+                [new(ChatRole.System, NarratorSystemPrompt), new(ChatRole.User, narratorContext)],
+                cancellationToken: ct);
+
+            narrative = response.Messages.LastOrDefault()?.Text?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(narrative))
+                narrative = "You stand at the threshold of a new adventure.";
+
+            eventStream.Emit(new AgentEvent("💬 Narrative", "Narrator", AgentEventKind.Response,
+                narrative[..Math.Min(80, narrative.Length)], narrative));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Opening scene narrator failed");
+            narrative = "You stand at the threshold of a new adventure, the world waiting to be explored.";
+            eventStream.Emit(new AgentEvent("Narrator failed", "Narrator", AgentEventKind.Error, ex.Message));
+        }
+
+        List<SuggestedAction> suggestions;
+        try
+        {
+            var suggCtx = BuildSuggestionContext(worldState, narrative);
+            var suggResponse = await chatClient.GetResponseAsync<SuggestedActions>(
+                [new(ChatRole.System, SuggestionSystemPrompt), new(ChatRole.User, suggCtx)],
+                cancellationToken: ct);
+            suggestions = suggResponse.Result?.Actions is { Count: > 0 } acts ? acts : DefaultSuggestions();
+            eventStream.Emit(new AgentEvent("💬 Suggestions", "Suggestion", AgentEventKind.Response,
+                $"{suggestions.Count} actions", string.Join(", ", suggestions.Select(s => s.Label))));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Opening scene suggestions failed — using defaults");
+            suggestions = DefaultSuggestions();
+        }
+
+        await PersistJournalEntry(saveSlotId, narrative, ct);
+        await UpdateLastPlayed(saveSlotId, ct);
+        eventStream.Emit(new AgentEvent("Turn complete", "GameMaster", AgentEventKind.WorkflowComplete));
+        return new GameTurnResult(narrative, suggestions);
     }
 
     public async Task<GameTurnResult> ProcessTurnAsync(Guid saveSlotId, string playerInput, CancellationToken ct = default)
