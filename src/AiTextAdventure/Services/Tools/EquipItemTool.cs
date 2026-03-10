@@ -16,6 +16,9 @@ public class EquipItemTool(ToolContext ctx)
 
         ctx.EmitToolCall("equip_item", $"item={itemName}");
 
+        await ctx.WriteLock.WaitAsync(cancellationToken);
+        try
+        {
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
@@ -53,5 +56,10 @@ public class EquipItemTool(ToolContext ctx)
             await ctx.SaveRecentEvent(worldState, $"equipped {invItem.ItemName}", cancellationToken);
 
         return resultMsg;
+        }
+        finally
+        {
+            ctx.WriteLock.Release();
+        }
     }
 }

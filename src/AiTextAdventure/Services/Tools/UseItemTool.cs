@@ -16,6 +16,9 @@ public class UseItemTool(ToolContext ctx)
 
         ctx.EmitToolCall("use_item", $"item={itemName}");
 
+        await ctx.WriteLock.WaitAsync(cancellationToken);
+        try
+        {
         var allItems = await ctx.Store.GetAll<InventoryItem>(GameJsonContext.Default.InventoryItem, cancellationToken);
         var invItem = allItems.FirstOrDefault(i => i.SaveSlotId == ctx.SaveSlotId &&
             i.ItemName.Equals(itemName, StringComparison.OrdinalIgnoreCase));
@@ -37,5 +40,10 @@ public class UseItemTool(ToolContext ctx)
 
         ctx.EmitToolResult("✨", $"used: {invItem.ItemName}", $"Used {invItem.ItemName}. HP:{beforeHp}→{stats.Health} Hunger:{beforeHunger}→{stats.Hunger}");
         return $"You use the {invItem.ItemName}. HP: {beforeHp}→{stats.Health}. Hunger: {beforeHunger}→{stats.Hunger}.";
+        }
+        finally
+        {
+            ctx.WriteLock.Release();
+        }
     }
 }
