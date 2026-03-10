@@ -86,16 +86,18 @@ public class MapService(
         logger.LogInformation("Map: Generating {Count} new tiles around ({X},{Y})", toGenerate.Count, centerX, centerY);
         eventStream.Emit(new AgentEvent($"🗺️ Generating {toGenerate.Count} map tiles...", "WorldGen", AgentEventKind.AgentInvoked));
 
-        // Generate tiles one at a time (Apple Intelligence can't handle batch)
-        // Build the existing tile set as we add new ones for neighbour-awareness
+        // Snapshot existing tiles for neighbour context — all new tiles in this batch use the
+        // same snapshot so they can be generated in parallel without coordination.
         var tileDict = allTiles.ToDictionary(t => (t.X, t.Y));
 
-        foreach (var (tx, ty) in toGenerate)
+        // Generate all missing tiles concurrently — parallel calls are much faster than sequential.
+        var tasks = toGenerate.Select(pos => GenerateSingleTile(saveSlotId, pos.x, pos.y, tileDict, gameName, ct));
+        var newTiles = await Task.WhenAll(tasks);
+
+        foreach (var tile in newTiles)
         {
-            var tile = await GenerateSingleTile(saveSlotId, tx, ty, tileDict, gameName, ct);
-            tileDict[(tx, ty)] = tile;
             await store.Set(tile.Id.ToString(), tile, GameJsonContext.Default.MapTile, ct);
-            logger.LogDebug("Map: Generated tile ({X},{Y}) = {Biome} / {Name}", tx, ty, tile.Biome, tile.LocationName);
+            logger.LogDebug("Map: Generated tile ({X},{Y}) = {Biome} / {Name}", tile.X, tile.Y, tile.Biome, tile.LocationName);
         }
 
         eventStream.Emit(new AgentEvent($"🗺️ {toGenerate.Count} tiles ready", "WorldGen", AgentEventKind.AgentOutput));
