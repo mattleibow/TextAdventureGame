@@ -60,7 +60,7 @@ public class GameMaster(
         You are a game assistant for a text adventure. Suggest exactly 3 player actions.
         Each suggestion must be ONE SINGLE action only — never compound or bundle multiple actions.
         Good: "go north", "pick up the Zlade", "look around".
-        Bad: "go north and pick up the sword", "look around then talk to the guard".
+        Bad: "go north and pick up the Zword", "look around then talk to the guard".
         Include at least one movement and one item/environment interaction.
         """;
 
